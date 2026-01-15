@@ -1,0 +1,119 @@
+{
+  "reimbursement_policies": {
+    "general_rules": [
+      "All expenses must have valid receipts (发票 or 收据)",
+      "Reimbursement requests must be submitted within 30 days of expense",
+      "Personal expenses are not reimbursable",
+      "Alcohol purchases require manager approval with business justification"
+    ],
+    "travel": {
+      "domestic_flight": {
+        "max_class": "Economy",
+        "max_amount": 2000,
+        "requires_approval": "Manager approval required for amounts over 1500 CNY"
+      },
+      "international_flight": {
+        "max_class": "Economy",
+        "max_amount": 8000,
+        "requires_approval": "Director approval required"
+      },
+      "taxi_rideshare": {
+        "max_amount": 200,
+        "daily_limit": 500,
+        "requires_receipt": true
+      },
+      "train": {
+        "max_class": "Second class / 二等座",
+        "high_speed_rail_allowed": true,
+        "business_class_exception": "Trips over 5 hours with manager approval"
+      }
+    },
+    "meal": {
+      "breakfast": {
+        "max_amount": 30,
+        "requires_receipt": true
+      },
+      "lunch": {
+        "max_amount": 50,
+        "requires_receipt": true
+      },
+      "dinner": {
+        "max_amount": 80,
+        "requires_receipt": true
+      },
+      "business_meal": {
+        "max_amount_per_person": 150,
+        "requires_approval": "Manager approval for amounts over 500 CNY",
+        "requires_attendee_list": true
+      },
+      "daily_limit": 200
+    },
+    "accommodation": {
+      "tier_1_cities": {
+        "cities": ["Beijing", "Shanghai", "Shenzhen", "Guangzhou", "北京", "上海", "深圳", "广州"],
+        "max_amount": 600,
+        "per_night": true
+      },
+      "tier_2_cities": {
+        "max_amount": 400,
+        "per_night": true
+      },
+      "tier_3_cities": {
+        "max_amount": 250,
+        "per_night": true
+      },
+      "requires_booking_confirmation": true
+    },
+    "equipment": {
+      "office_supplies": {
+        "max_amount": 500,
+        "requires_approval": "Over 200 CNY requires justification"
+      },
+      "electronics": {
+        "max_amount": 3000,
+        "requires_approval": "Manager approval required",
+        "requires_business_justification": true
+      },
+      "software_licenses": {
+        "max_amount": 2000,
+        "requires_approval": "IT approval required"
+      }
+    },
+    "prohibited_items": [
+      "Personal entertainment (movies, games, etc.)",
+      "Luxury items (jewelry, designer goods)",
+      "Gifts for personal use",
+      "Fines and penalties",
+      "Personal vehicle purchases",
+      "Home office furniture without prior approval"
+    ]
+  },
+  "documentation_requirements": {
+    "required_fields": [
+      "Date of expense",
+      "Vendor/merchant name",
+      "Expense category",
+      "Business purpose",
+      "Receipt or invoice"
+    ],
+    "receipt_types": {
+      "fapiao": {
+        "description": "Official VAT invoice (增值税发票)",
+        "preferred": true,
+        "tax_deductible": true
+      },
+      "shouju": {
+        "description": "Receipt (收据)",
+        "accepted": true,
+        "tax_deductible": false,
+        "max_amount": 500
+      }
+    }
+  },
+  "approval_workflow": {
+    "auto_approve_threshold": 200,
+    "manager_approval_threshold": 1000,
+    "director_approval_threshold": 5000,
+    "cfo_approval_threshold": 20000
+  }
+}

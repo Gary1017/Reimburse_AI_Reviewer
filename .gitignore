@@ -1,0 +1,59 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+dist/
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.html
+
+# Go workspace file
+go.work
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Configuration files with secrets
+configs/config.yaml
+.env
+.env.local
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+data/
+
+# Generated files
+generated_vouchers/
+logs/
+*.log
+
+# Templates (user-provided)
+templates/*.xlsx
+!templates/.gitkeep
+
+# Temporary files
+tmp/
+temp/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Backups
+*.bak
+*.backup
+*.csv
+*accessKeys*

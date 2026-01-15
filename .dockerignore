@@ -1,0 +1,46 @@
+# Git
+.git
+.gitignore
+
+# Build artifacts
+bin/
+dist/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test files
+*.test
+coverage.out
+coverage.html
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Data files
+data/
+logs/
+generated_vouchers/
+backups/
+
+# Temporary files
+tmp/
+temp/
+
+# Configuration with secrets
+configs/config.yaml
+.env
+.env.local
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Others
+.DS_Store
+Thumbs.db
