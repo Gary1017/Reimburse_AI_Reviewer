@@ -6,7 +6,6 @@ This guide walks you through setting up Lark approval event subscriptions using 
 
 - Lark/Feishu Open Platform account with admin access
 - Your approval definition code (`LARK_APPROVAL_CODE`)
-- Public webhook endpoint (deployed application or ngrok tunnel)
 
 ## 🔑 Step 1: Get Your Approval Code
 
@@ -58,38 +57,13 @@ The response will include `approval_code` for each approval definition.
 5. ❌ Never commit to version control
 6. ❌ Never share in chat/email
 
-## 📡 Step 3: Subscribe to Approval Events
+## 📡 Step 3: Subscribe to Approval Events (SDK WS)
 
-There are two methods to receive approval events:
+Use the Lark SDK built-in WebSocket event subscription. This avoids public webhooks and runs a persistent connection from your server.
 
-### Method A: Webhook Subscription (Recommended)
+### 1. Subscribe to Approval Events
 
-This method allows Lark to push events to your server in real-time.
-
-#### 1. Register Your Webhook Endpoint
-
-In Lark Open Platform Console:
-
-1. Go to **Event Subscriptions** section
-2. Add Request URL: `https://your-domain.com/webhook/approval`
-3. Lark will send a verification challenge
-4. Your server must respond with the challenge value
-
-The system already handles this verification in `internal/webhook/verifier.go`:
-
-```go
-func (v *Verifier) Verify(c *gin.Context) {
-    // ... handles url_verification challenge
-    if challenge.Type == "url_verification" {
-        c.JSON(http.StatusOK, gin.H{"challenge": challenge.Challenge})
-        return
-    }
-}
-```
-
-#### 2. Subscribe to Approval Events
-
-Subscribe to these event types:
+Enable these event types in the Lark Open Platform console:
 
 | Event Type | Description | Use Case |
 |------------|-------------|----------|
@@ -99,7 +73,7 @@ Subscribe to these event types:
 | `approval.approval_instance.rejected_v4` | Approval rejected | Send notification |
 | `approval.approval_instance.cancelled_v4` | Approval cancelled | Cleanup |
 
-#### 3. Configure Event Scopes
+### 2. Configure Event Scopes
 
 Set permissions in Lark Open Platform:
 - ✅ `approval:approval` - Read approval data
@@ -107,49 +81,13 @@ Set permissions in Lark Open Platform:
 - ✅ `im:message` - Send messages
 - ✅ `im:message.file` - Download attachments
 
-### Method B: Polling (Fallback)
-
-If webhooks aren't available, you can poll for changes:
-
-```go
-// Poll approval instances periodically
-func (c *Client) PollApprovalInstances(ctx context.Context, approvalCode string) {
-    ticker := time.NewTicker(5 * time.Minute)
-    defer ticker.Stop()
-
-    for {
-        select {
-        case <-ticker.C:
-            instances, err := c.ListApprovalInstances(ctx, approvalCode)
-            if err != nil {
-                log.Error("Failed to list instances", zap.Error(err))
-                continue
-            }
-            // Process new instances
-            for _, instance := range instances {
-                // Check if already processed
-                // Process if new
-            }
-        case <-ctx.Done():
-            return
-        }
-    }
-}
-```
-
 ## 🧪 Step 4: Test Event Reception
 
-### Using ngrok for Local Testing
+### Local Testing
 
 ```bash
-# 1. Start your local server
+# Start your local server and WS connection
 go run cmd/server/main.go
-
-# 2. Expose via ngrok
-ngrok http 8080
-
-# 3. Use the ngrok URL in Lark webhook config
-# Example: https://abc123.ngrok.io/webhook/approval
 ```
 
 ### Test Event Payload
@@ -205,10 +143,6 @@ When a reimbursement is submitted, you'll receive:
 ### Check Logs
 
 ```bash
-# Docker
-docker-compose logs -f app | grep "approval_instance"
-
-# Local
 tail -f logs/app.log | grep "approval_instance"
 ```
 
@@ -247,30 +181,16 @@ Expected response:
 ### Issue: Events Not Received
 
 **Check:**
-1. ✅ Webhook URL is publicly accessible
-2. ✅ SSL certificate is valid (Lark requires HTTPS)
-3. ✅ Firewall allows incoming connections
-4. ✅ Event subscription is active in Lark console
-5. ✅ Approval code matches your reimbursement workflow
+1. ✅ Event subscription is active in Lark console
+2. ✅ Approval code matches your reimbursement workflow
+3. ✅ Your app has the required event scopes
+4. ✅ The process can reach Lark over the network (WS connection)
 
 **Debug:**
 ```bash
-# Test webhook endpoint directly
-curl -X POST http://localhost:8080/webhook/approval \
-  -H "Content-Type: application/json" \
-  -d '{"type":"url_verification","challenge":"test123"}'
-
-# Expected: {"challenge":"test123"}
+# Check logs for WS connection and event receipt
+tail -f logs/app.log | grep "approval"
 ```
-
-### Issue: Verification Token Mismatch
-
-Your `LARK_APPROVAL_CODE` is NOT the verification token. The system no longer uses `LARK_VERIFY_TOKEN` or `LARK_ENCRYPT_KEY`.
-
-**New Authentication Flow:**
-1. Lark sends event with header containing `token`
-2. System uses `LARK_APPROVAL_CODE` to validate that events are for your approval
-3. No additional verification tokens needed
 
 ### Issue: Invoice Extraction Fails
 

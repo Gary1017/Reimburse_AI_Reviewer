@@ -16,12 +16,12 @@ import (
 
 // Engine orchestrates the approval workflow
 type Engine struct {
-	db              *database.DB
-	instanceRepo    *repository.InstanceRepository
-	historyRepo     *repository.HistoryRepository
-	statusTracker   *StatusTracker
-	approvalAPI     *lark.ApprovalAPI
-	logger          *zap.Logger
+	db            *database.DB
+	instanceRepo  *repository.InstanceRepository
+	historyRepo   *repository.HistoryRepository
+	statusTracker *StatusTracker
+	approvalAPI   *lark.ApprovalAPI
+	logger        *zap.Logger
 }
 
 // NewEngine creates a new workflow engine
@@ -193,11 +193,11 @@ func mapLarkStatus(larkStatus string) string {
 	// Map Lark approval statuses to internal statuses
 	// This mapping depends on Lark's actual status values
 	statusMap := map[string]string{
-		"PENDING":   models.StatusPending,
-		"APPROVED":  models.StatusApproved,
-		"REJECTED":  models.StatusRejected,
-		"CANCELED":  models.StatusRejected,
-		"DELETED":   models.StatusRejected,
+		"PENDING":  models.StatusPending,
+		"APPROVED": models.StatusApproved,
+		"REJECTED": models.StatusRejected,
+		"CANCELED": models.StatusRejected,
+		"DELETED":  models.StatusRejected,
 	}
 
 	if internal, ok := statusMap[larkStatus]; ok {

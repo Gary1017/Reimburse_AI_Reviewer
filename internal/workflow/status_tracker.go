@@ -97,6 +97,7 @@ func (s *StatusTracker) isValidTransition(from, to string) bool {
 		models.StatusCreated: {
 			models.StatusPending,
 			models.StatusAIAuditing,
+			models.StatusApproved, // Allow direct approval for fast/auto-approved instances
 			models.StatusRejected,
 		},
 		models.StatusPending: {

@@ -64,17 +64,17 @@ The approval code is the unique identifier for your approval definition:
 git clone git@github.com:Gary1017/Reimburse_AI_Reviewer.git
 cd Reimburse_AI_Reviewer
 
-# 2. Copy configuration
+# 2. Copy configuration files
 cp configs/config.example.yaml configs/config.yaml
+cp .env.example .env
 
-# 3. Set environment variables
-export LARK_APP_ID="your_app_id"
-export LARK_APP_SECRET="your_app_secret"
-export LARK_APPROVAL_CODE="your_approval_code"
-export OPENAI_API_KEY="your_openai_key"
-export ACCOUNTANT_EMAIL="accountant@company.com"
-export COMPANY_NAME="Your Company Ltd."
-export COMPANY_TAX_ID="91110000123456789X"
+# 3. Configure your credentials
+# Edit .env file with your actual credentials (never commit this file!)
+# The application will automatically load .env file if it exists
+# Alternatively, you can export environment variables directly:
+#   export LARK_APP_ID="your_app_id"
+#   export LARK_APP_SECRET="your_app_secret"
+#   ... etc
 
 # 4. Place your Excel template
 cp your_template.xlsx templates/reimbursement_form.xlsx
@@ -89,7 +89,9 @@ go run cmd/server/main.go
 go run cmd/server/main.go
 ```
 
-### Option 2: Docker
+### Option 2: Docker (Optional)
+
+Use this only if Docker is installed locally:
 
 ```bash
 # Build and run with Docker Compose

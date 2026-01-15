@@ -2,9 +2,12 @@ package config
 
 import (
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/viper"
+	"github.com/subosito/gotenv"
 )
 
 // Config holds all application configuration
@@ -78,9 +81,24 @@ type LoggerConfig struct {
 
 // Load loads configuration from file and environment variables
 func Load(configPath string) (*Config, error) {
+	// Load .env file if it exists (for local development)
+	// This allows users to use .env files instead of exporting env vars
+	envPath := ".env"
+	if _, err := os.Stat(envPath); err == nil {
+		if err := gotenv.Load(envPath); err != nil {
+			return nil, fmt.Errorf("failed to load .env file: %w", err)
+		}
+	}
+
 	viper.SetConfigFile(configPath)
 	viper.SetConfigType("yaml")
 	viper.AutomaticEnv()
+	// Map environment variables with underscores to config keys with dots
+	// e.g., LARK_APP_ID -> lark.app_id
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+
+	// Bind environment variables (must be done before reading config)
+	bindEnvVars()
 
 	// Set defaults
 	setDefaults()
@@ -89,9 +107,6 @@ func Load(configPath string) (*Config, error) {
 	if err := viper.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
-
-	// Override with environment variables
-	bindEnvVars()
 
 	var cfg Config
 	if err := viper.Unmarshal(&cfg); err != nil {

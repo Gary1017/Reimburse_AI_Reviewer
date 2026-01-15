@@ -15,11 +15,13 @@ import (
 	"github.com/garyjia/ai-reimbursement/internal/lark"
 	"github.com/garyjia/ai-reimbursement/internal/repository"
 	"github.com/garyjia/ai-reimbursement/internal/voucher"
-	"github.com/garyjia/ai-reimbursement/internal/webhook"
 	"github.com/garyjia/ai-reimbursement/internal/workflow"
 	"github.com/garyjia/ai-reimbursement/pkg/database"
 	"github.com/garyjia/ai-reimbursement/pkg/utils"
 	"github.com/gin-gonic/gin"
+	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
+	"github.com/larksuite/oapi-sdk-go/v3/event/dispatcher"
+	larkws "github.com/larksuite/oapi-sdk-go/v3/ws"
 	"go.uber.org/zap"
 )
 
@@ -77,8 +79,8 @@ func main() {
 
 	// Initialize Lark client
 	larkClient := lark.NewClient(lark.Config{
-		AppID:       cfg.Lark.AppID,
-		AppSecret:   cfg.Lark.AppSecret,
+		AppID:        cfg.Lark.AppID,
+		AppSecret:    cfg.Lark.AppSecret,
 		ApprovalCode: cfg.Lark.ApprovalCode,
 	}, logger)
 
@@ -116,6 +118,22 @@ func main() {
 		logger,
 	)
 
+	// Initialize Lark event processor and WS client
+	eventProcessor := lark.NewEventProcessor(cfg.Lark.ApprovalCode, workflowEngine, logger)
+	eventHandler := dispatcher.NewEventDispatcher("", "").
+		OnCustomizedEvent("approval_instance", eventProcessor.HandleCustomizedEvent)
+
+	wsClient := larkws.NewClient(cfg.Lark.AppID, cfg.Lark.AppSecret,
+		larkws.WithEventHandler(eventHandler),
+		larkws.WithLogLevel(larkcore.LogLevelInfo),
+	)
+
+	go func() {
+		if err := wsClient.Start(context.Background()); err != nil {
+			logger.Fatal("Failed to start Lark WS client", zap.Error(err))
+		}
+	}()
+
 	// Initialize voucher generator
 	voucherGenerator, err := voucher.NewGenerator(
 		db,
@@ -138,10 +156,6 @@ func main() {
 	// Initialize email sender
 	emailSender := email.NewSender(messageAPI, voucherRepo, logger)
 
-	// Initialize webhook handler
-	webhookVerifier := webhook.NewVerifier("", "", logger)
-	webhookHandler := webhook.NewHandler(webhookVerifier, workflowEngine, cfg.Lark.ApprovalCode, logger)
-
 	// Set Gin mode based on logger level
 	if cfg.Logger.Level == "debug" {
 		gin.SetMode(gin.DebugMode)
@@ -163,9 +177,6 @@ func main() {
 			"time":    time.Now().Format(time.RFC3339),
 		})
 	})
-
-	// Webhook endpoint
-	router.POST(cfg.Lark.WebhookPath, webhookHandler.Handle)
 
 	// Admin API endpoints (for testing and monitoring)
 	api := router.Group("/api/v1")
