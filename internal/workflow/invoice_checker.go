@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 
@@ -126,8 +127,8 @@ func (ic *InvoiceChecker) processInvoice(ctx context.Context, instanceID int64, 
 	}
 
 	// Save invoice in transaction
-	err = ic.db.WithTransaction(func(tx error) error {
-		if err := ic.invoiceRepo.Create(nil, invoiceRecord); err != nil {
+	err = ic.db.WithTransaction(func(tx *sql.Tx) error {
+		if err := ic.invoiceRepo.Create(tx, invoiceRecord); err != nil {
 			return fmt.Errorf("failed to create invoice record: %w", err)
 		}
 
@@ -139,7 +140,7 @@ func (ic *InvoiceChecker) processInvoice(ctx context.Context, instanceID int64, 
 			ValidationData: string(extractedJSON),
 		}
 
-		if err := ic.invoiceRepo.CreateValidation(nil, validation); err != nil {
+		if err := ic.invoiceRepo.CreateValidation(tx, validation); err != nil {
 			return fmt.Errorf("failed to create validation record: %w", err)
 		}
 

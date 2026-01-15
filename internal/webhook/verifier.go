@@ -44,7 +44,7 @@ func (v *Verifier) VerifyChallenge(body []byte) (string, error) {
 		return "", fmt.Errorf("invalid challenge type: %s", challenge.Type)
 	}
 
-	if challenge.Token != v.verifyToken {
+	if v.verifyToken != "" && challenge.Token != v.verifyToken {
 		return "", fmt.Errorf("invalid verification token")
 	}
 
@@ -53,6 +53,10 @@ func (v *Verifier) VerifyChallenge(body []byte) (string, error) {
 
 // VerifySignature verifies the webhook signature
 func (v *Verifier) VerifySignature(timestamp, nonce, signature, body string) bool {
+	if v.encryptKey == "" {
+		// Signature verification disabled when no encrypt key configured
+		return true
+	}
 	// Concatenate timestamp + nonce + encrypt_key + body
 	content := timestamp + nonce + v.encryptKey + body
 

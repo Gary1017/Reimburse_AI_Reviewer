@@ -79,8 +79,7 @@ func main() {
 	larkClient := lark.NewClient(lark.Config{
 		AppID:       cfg.Lark.AppID,
 		AppSecret:   cfg.Lark.AppSecret,
-		VerifyToken: cfg.Lark.VerifyToken,
-		EncryptKey:  cfg.Lark.EncryptKey,
+		ApprovalCode: cfg.Lark.ApprovalCode,
 	}, logger)
 
 	approvalAPI := lark.NewApprovalAPI(larkClient, logger)
@@ -140,8 +139,8 @@ func main() {
 	emailSender := email.NewSender(messageAPI, voucherRepo, logger)
 
 	// Initialize webhook handler
-	webhookVerifier := webhook.NewVerifier(cfg.Lark.VerifyToken, cfg.Lark.EncryptKey, logger)
-	webhookHandler := webhook.NewHandler(webhookVerifier, workflowEngine, logger)
+	webhookVerifier := webhook.NewVerifier("", "", logger)
+	webhookHandler := webhook.NewHandler(webhookVerifier, workflowEngine, cfg.Lark.ApprovalCode, logger)
 
 	// Set Gin mode based on logger level
 	if cfg.Logger.Level == "debug" {

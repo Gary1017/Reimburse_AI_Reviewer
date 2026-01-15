@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 
@@ -62,9 +63,9 @@ func (s *StatusTracker) UpdateStatus(instanceID int64, newStatus string, actionD
 	}
 
 	// Update in transaction
-	return s.db.WithTransaction(func(tx error) error {
+	return s.db.WithTransaction(func(tx *sql.Tx) error {
 		// Update instance status
-		if err := s.instanceRepo.UpdateStatus(nil, instanceID, newStatus); err != nil {
+		if err := s.instanceRepo.UpdateStatus(tx, instanceID, newStatus); err != nil {
 			return fmt.Errorf("failed to update status: %w", err)
 		}
 
@@ -76,7 +77,7 @@ func (s *StatusTracker) UpdateStatus(instanceID int64, newStatus string, actionD
 			ActionType:     models.ActionTypeStatusChange,
 			ActionData:     string(actionDataJSON),
 		}
-		if err := s.historyRepo.Create(nil, history); err != nil {
+		if err := s.historyRepo.Create(tx, history); err != nil {
 			return fmt.Errorf("failed to create history: %w", err)
 		}
 

@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -84,8 +85,8 @@ func (e *Engine) HandleInstanceCreated(instanceID string, eventData map[string]i
 		FormData:        string(formDataJSON),
 	}
 
-	return e.db.WithTransaction(func(tx error) error {
-		if err := e.instanceRepo.Create(nil, instance); err != nil {
+	return e.db.WithTransaction(func(tx *sql.Tx) error {
+		if err := e.instanceRepo.Create(tx, instance); err != nil {
 			return fmt.Errorf("failed to create instance: %w", err)
 		}
 
@@ -97,7 +98,7 @@ func (e *Engine) HandleInstanceCreated(instanceID string, eventData map[string]i
 			ActionType:     models.ActionTypeWebhook,
 			ActionData:     string(formDataJSON),
 		}
-		if err := e.historyRepo.Create(nil, history); err != nil {
+		if err := e.historyRepo.Create(tx, history); err != nil {
 			return fmt.Errorf("failed to create history: %w", err)
 		}
 

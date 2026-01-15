@@ -15,14 +15,16 @@ import (
 type Handler struct {
 	verifier       *Verifier
 	workflowEngine *workflow.Engine
+	approvalCode   string
 	logger         *zap.Logger
 }
 
 // NewHandler creates a new webhook handler
-func NewHandler(verifier *Verifier, workflowEngine *workflow.Engine, logger *zap.Logger) *Handler {
+func NewHandler(verifier *Verifier, workflowEngine *workflow.Engine, approvalCode string, logger *zap.Logger) *Handler {
 	return &Handler{
 		verifier:       verifier,
 		workflowEngine: workflowEngine,
+		approvalCode:   approvalCode,
 		logger:         logger,
 	}
 }
@@ -91,6 +93,18 @@ func (h *Handler) Handle(c *gin.Context) {
 		h.logger.Error("Failed to parse event", zap.Error(err))
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to parse event"})
 		return
+	}
+
+	// Filter by approval code if provided
+	if h.approvalCode != "" {
+		if approvalCode, ok := event.Event["approval_code"].(string); ok {
+			if approvalCode != h.approvalCode {
+				h.logger.Info("Ignoring event for different approval code",
+					zap.String("event_approval_code", approvalCode))
+				c.JSON(http.StatusOK, gin.H{"message": "Event ignored"})
+				return
+			}
+		}
 	}
 
 	// Validate event type
