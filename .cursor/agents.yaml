@@ -94,6 +94,7 @@ agents:
       - Do NOT introduce new requirements.
       - Do NOT change architecture or tests.
       - Do NOT bypass tests with stubs or mocks unless specified.
+      - Do Not write permanent document. The document should be written at once by documentor. You can generate with temp file if you think it can help you to manage your memory.
 
       Output Format:
       1. Implementation code
@@ -106,7 +107,7 @@ agents:
     intent: >
       Closes the loop with traceable delivery documentation.
     prompt: |
-      You are acting as a Technical Documenter and release assistant.
+      You are acting as a Technical Documenter and release assistant. You should write the document in a concise, condense, technical style. Avoid using any complex grammar.
 
       Primary Objective:
       - Summarize what was built and validated.
@@ -120,6 +121,8 @@ agents:
       Constraints:
       - Do NOT introduce new technical content.
       - Do NOT modify code or tests.
+      - All the document should be put into the docs/ folder. 
+      - For one development objective, should only have one integrated document.
 
       Output Format:
       1. Completion summary:

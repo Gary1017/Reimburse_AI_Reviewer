@@ -16,14 +16,16 @@ import (
 
 // Engine orchestrates the approval workflow
 type Engine struct {
-	db            *database.DB
-	instanceRepo  *repository.InstanceRepository
-	historyRepo   *repository.HistoryRepository
-	itemRepo      *repository.ReimbursementItemRepository
-	statusTracker *StatusTracker
-	approvalAPI   *lark.ApprovalAPI
-	formParser    *lark.FormParser
-	logger        *zap.Logger
+	db                *database.DB
+	instanceRepo      *repository.InstanceRepository
+	historyRepo       *repository.HistoryRepository
+	itemRepo          *repository.ReimbursementItemRepository
+	attachmentRepo    *repository.AttachmentRepository
+	statusTracker     *StatusTracker
+	approvalAPI       *lark.ApprovalAPI
+	formParser        *lark.FormParser
+	attachmentHandler *lark.AttachmentHandler
+	logger            *zap.Logger
 }
 
 // NewEngine creates a new workflow engine
@@ -32,25 +34,30 @@ func NewEngine(
 	instanceRepo *repository.InstanceRepository,
 	historyRepo *repository.HistoryRepository,
 	itemRepo *repository.ReimbursementItemRepository,
+	attachmentRepo *repository.AttachmentRepository,
 	approvalAPI *lark.ApprovalAPI,
+	attachmentHandler *lark.AttachmentHandler,
 	logger *zap.Logger,
 ) *Engine {
 	statusTracker := NewStatusTracker(db, instanceRepo, historyRepo, logger)
 	formParser := lark.NewFormParser(logger)
 
 	return &Engine{
-		db:            db,
-		instanceRepo:  instanceRepo,
-		historyRepo:   historyRepo,
-		itemRepo:      itemRepo,
-		statusTracker: statusTracker,
-		approvalAPI:   approvalAPI,
-		formParser:    formParser,
-		logger:        logger,
+		db:                db,
+		instanceRepo:      instanceRepo,
+		historyRepo:       historyRepo,
+		itemRepo:          itemRepo,
+		attachmentRepo:    attachmentRepo,
+		statusTracker:     statusTracker,
+		approvalAPI:       approvalAPI,
+		formParser:        formParser,
+		attachmentHandler: attachmentHandler,
+		logger:            logger,
 	}
 }
 
 // HandleInstanceCreated handles the creation of a new approval instance
+// Implements ARCH-005: Non-blocking attachment integration into workflow
 func (e *Engine) HandleInstanceCreated(instanceID string, eventData map[string]interface{}) error {
 	ctx := context.Background()
 
@@ -90,6 +97,15 @@ func (e *Engine) HandleInstanceCreated(instanceID string, eventData map[string]i
 			zap.Error(err))
 		// Don't fail the instance creation, but log for debugging
 		reimbursementItems = nil
+	}
+
+	// Extract attachments from form data (ARCH-005: non-blocking)
+	attachmentRefs, attachErr := e.attachmentHandler.ExtractAttachmentURLs(string(formDataJSON))
+	if attachErr != nil {
+		e.logger.Warn("Failed to extract attachments from form data",
+			zap.String("instance_id", instanceID),
+			zap.Error(attachErr))
+		// Don't fail the workflow, attachments are secondary
 	}
 
 	// Create instance in database
@@ -136,6 +152,49 @@ func (e *Engine) HandleInstanceCreated(instanceID string, eventData map[string]i
 				zap.Int("count", itemCount))
 		} else {
 			e.logger.Warn("No reimbursement items parsed or saved",
+				zap.Int64("instance_id", instance.ID))
+		}
+
+		// Process attachments (ARCH-005: async, non-blocking)
+		if attachmentRefs != nil && len(attachmentRefs) > 0 {
+			attachmentCount := 0
+			for idx, ref := range attachmentRefs {
+				// Link to item if available
+				// ARCH-005: Skip attachments without items to prevent FK constraint violations
+				if len(reimbursementItems) == 0 {
+					e.logger.Warn("Skipping attachment creation: no reimbursement items to link to",
+						zap.Int64("instance_id", instance.ID),
+						zap.String("attachment_name", ref.OriginalName))
+					continue
+				}
+
+				ref.ItemID = reimbursementItems[idx%len(reimbursementItems)].ID
+
+				// Create attachment record in PENDING status
+				attachment := &models.Attachment{
+					ItemID:         ref.ItemID,
+					InstanceID:     instance.ID,
+					FileName:       ref.OriginalName,
+					DownloadStatus: models.AttachmentStatusPending,
+					CreatedAt:      time.Now(),
+				}
+
+				if err := e.attachmentRepo.Create(tx, attachment); err != nil {
+					e.logger.Error("Failed to create attachment record",
+						zap.Int64("instance_id", instance.ID),
+						zap.Int64("item_id", ref.ItemID),
+						zap.String("file_name", ref.OriginalName),
+						zap.Error(err))
+					// Don't fail the whole transaction for attachment creation
+					continue
+				}
+				attachmentCount++
+			}
+			e.logger.Info("Created attachment records",
+				zap.Int64("instance_id", instance.ID),
+				zap.Int("count", attachmentCount))
+		} else if attachmentRefs != nil {
+			e.logger.Info("No attachments found in form",
 				zap.Int64("instance_id", instance.ID))
 		}
 

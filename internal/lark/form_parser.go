@@ -13,13 +13,32 @@ import (
 
 // FormParser parses Lark approval form data into reimbursement items
 type FormParser struct {
-	logger *zap.Logger
+	logger            *zap.Logger
+	attachmentHandler *AttachmentHandler
 }
 
 // NewFormParser creates a new form parser
 func NewFormParser(logger *zap.Logger) *FormParser {
 	return &FormParser{
-		logger: logger,
+		logger:            logger,
+		attachmentHandler: NewAttachmentHandler(logger, "/tmp/attachments"), // Default attachment dir
+	}
+}
+
+// NewFormParserWithAttachmentHandler creates form parser with custom attachment handler
+func NewFormParserWithAttachmentHandler(logger *zap.Logger, handler *AttachmentHandler) *FormParser {
+	return &FormParser{
+		logger:            logger,
+		attachmentHandler: handler,
+	}
+}
+
+// NewFormParserWithAttachmentSupport creates form parser with attachment support
+// Used in tests
+func NewFormParserWithAttachmentSupport(logger *zap.Logger) *FormParser {
+	return &FormParser{
+		logger:            logger,
+		attachmentHandler: NewAttachmentHandler(logger, "/tmp/attachments"),
 	}
 }
 
@@ -76,6 +95,35 @@ func (fp *FormParser) Parse(jsonData string) ([]*models.ReimbursementItem, error
 		zap.Int("count", len(items)))
 
 	return items, nil
+}
+
+// ParseWithAttachments parses form data and also extracts attachments
+// Implements ARCH-001: Parse items and attachments without blocking each other
+func (fp *FormParser) ParseWithAttachments(jsonData string) ([]*models.ReimbursementItem, []*models.AttachmentReference, error) {
+	// Parse items normally (this should not fail due to attachment issues)
+	items, err := fp.Parse(jsonData)
+	if err != nil {
+		fp.logger.Warn("Failed to parse items, continuing with attachment extraction",
+			zap.Error(err))
+		items = nil
+	}
+
+	// Extract attachments independently (ARCH-001: extraction doesn't block)
+	attachments, attachErr := fp.attachmentHandler.ExtractAttachmentURLs(jsonData)
+	if attachErr != nil {
+		fp.logger.Warn("Failed to extract attachments",
+			zap.Error(attachErr))
+		// Don't fail the whole parse, attachments are optional
+	}
+
+	// If attachments exist, link them to items
+	if len(attachments) > 0 && len(items) > 0 {
+		// Link first attachment to first item by default
+		// In real scenario, would need better mapping from widget to item
+		attachments[0].ItemID = items[0].ID
+	}
+
+	return items, attachments, err
 }
 
 // extractFormFields extracts all form fields from the raw data

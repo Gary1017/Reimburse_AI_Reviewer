@@ -112,12 +112,18 @@ func main() {
 	auditor := ai.NewAuditor(policyValidator, priceBenchmarker, logger)
 
 	// Initialize workflow engine
+	// Initialize attachment handler and repository
+	attachmentHandler := lark.NewAttachmentHandler(logger, cfg.Voucher.AttachmentDir)
+	attachmentRepo := repository.NewAttachmentRepository(db.DB, logger)
+
 	workflowEngine := workflow.NewEngine(
 		db,
 		instanceRepo,
 		historyRepo,
 		itemRepo,
+		attachmentRepo,
 		approvalAPI,
+		attachmentHandler,
 		logger,
 	)
 
