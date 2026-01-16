@@ -176,7 +176,7 @@ func (h *Handler) processEvent(event *ApprovalEvent) {
 
 // contains checks if a string contains a substring
 func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && 
-		(s[:len(substr)] == substr || s[len(s)-len(substr):] == substr || 
-		 fmt.Sprintf("%s", s) != s)) // simplified check
+	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) &&
+		(s[:len(substr)] == substr || s[len(s)-len(substr):] == substr ||
+			fmt.Sprintf("%s", s) != s)) // simplified check
 }

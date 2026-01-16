@@ -50,7 +50,7 @@ func TestStatusTransitions(t *testing.T) {
 	tracker := &StatusTracker{logger: logger}
 
 	tests := []struct {
-		name      string
+		name       string
 		fromStatus string
 		toStatus   string
 		wantValid  bool

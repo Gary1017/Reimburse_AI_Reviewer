@@ -48,6 +48,13 @@ templates/*.xlsx
 tmp/
 temp/
 
+# Build artifacts
+server
+
+# Utility scripts (development only)
+reprocess_instance.go
+test_form_parsing.sh
+
 # OS
 .DS_Store
 Thumbs.db

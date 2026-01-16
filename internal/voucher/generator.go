@@ -14,14 +14,14 @@ import (
 
 // Generator orchestrates voucher generation
 type Generator struct {
-	db              *database.DB
-	instanceRepo    *repository.InstanceRepository
-	voucherRepo     *repository.VoucherRepository
-	excelFiller     *ExcelFiller
+	db                *database.DB
+	instanceRepo      *repository.InstanceRepository
+	voucherRepo       *repository.VoucherRepository
+	excelFiller       *ExcelFiller
 	attachmentHandler *AttachmentHandler
-	outputDir       string
-	accountantEmail string
-	logger          *zap.Logger
+	outputDir         string
+	accountantEmail   string
+	logger            *zap.Logger
 }
 
 // Config holds generator configuration

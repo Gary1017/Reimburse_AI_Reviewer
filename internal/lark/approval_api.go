@@ -59,7 +59,7 @@ func (a *ApprovalAPI) DownloadFile(ctx context.Context, fileKey string) ([]byte,
 func (a *ApprovalAPI) GetUserInfo(ctx context.Context, userID string) (map[string]interface{}, error) {
 	// TODO: Implement user info retrieval using contact API
 	a.logger.Debug("Getting user info", zap.String("user_id", userID))
-	
+
 	// For now, return minimal info
 	return map[string]interface{}{
 		"user_id": userID,

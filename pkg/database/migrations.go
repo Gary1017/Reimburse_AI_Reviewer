@@ -89,14 +89,14 @@ func (m *Migrator) RunMigrations(migrationsDir string) error {
 	// Apply pending migrations
 	for _, migration := range migrations {
 		if applied[migration.Version] {
-			m.logger.Debug("Skipping applied migration", 
-				zap.Int("version", migration.Version), 
+			m.logger.Debug("Skipping applied migration",
+				zap.Int("version", migration.Version),
 				zap.String("name", migration.Name))
 			continue
 		}
 
-		m.logger.Info("Applying migration", 
-			zap.Int("version", migration.Version), 
+		m.logger.Info("Applying migration",
+			zap.Int("version", migration.Version),
 			zap.String("name", migration.Name))
 
 		if err := m.applyMigration(migration); err != nil {
@@ -133,7 +133,7 @@ func (m *Migrator) loadMigrations(dir string) ([]Migration, error) {
 		if _, err := fmt.Sscanf(filename, "%d", &version); err != nil {
 			return fmt.Errorf("invalid migration filename format: %s", filename)
 		}
-		
+
 		// Extract name (remove version and .sql extension)
 		parts := strings.SplitN(filename, "_", 2)
 		if len(parts) == 2 {

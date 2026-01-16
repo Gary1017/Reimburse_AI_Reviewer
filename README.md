@@ -22,6 +22,8 @@ The system is built on three core layers:
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed architecture documentation.
 
+For comprehensive documentation, see [docs/README.md](docs/README.md) - the main documentation index.
+
 ## 📋 Prerequisites
 
 - Go 1.22 or higher

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -76,6 +77,7 @@ func main() {
 	instanceRepo := repository.NewInstanceRepository(db.DB, logger)
 	historyRepo := repository.NewHistoryRepository(db.DB, logger)
 	voucherRepo := repository.NewVoucherRepository(db.DB, logger)
+	itemRepo := repository.NewReimbursementItemRepository(db.DB, logger)
 
 	// Initialize Lark client
 	larkClient := lark.NewClient(lark.Config{
@@ -114,6 +116,7 @@ func main() {
 		db,
 		instanceRepo,
 		historyRepo,
+		itemRepo,
 		approvalAPI,
 		logger,
 	)
@@ -185,6 +188,58 @@ func main() {
 			// Get instance by ID
 			// TODO: Implement admin API handlers
 			c.JSON(http.StatusOK, gin.H{"message": "Admin API endpoint"})
+		})
+
+		// Test endpoint for form parsing verification
+		api.POST("/test/parse-form", func(c *gin.Context) {
+			var formData map[string]interface{}
+			if err := c.ShouldBindJSON(&formData); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+
+			// Convert to JSON string for parser
+			formJSON, err := json.Marshal(formData)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to marshal form data"})
+				return
+			}
+
+			// Parse using FormParser
+			formParser := lark.NewFormParser(logger)
+			items, err := formParser.Parse(string(formJSON))
+			if err != nil {
+				logger.Warn("Form parsing failed", zap.Error(err))
+				c.JSON(http.StatusOK, gin.H{
+					"success": false,
+					"error":   err.Error(),
+					"items":   []interface{}{},
+				})
+				return
+			}
+
+			// Convert items to JSON for response
+			itemsJSON := make([]map[string]interface{}, len(items))
+			for i, item := range items {
+				itemsJSON[i] = map[string]interface{}{
+					"id":                 item.ID,
+					"item_type":          item.ItemType,
+					"description":        item.Description,
+					"amount":             item.Amount,
+					"currency":           item.Currency,
+					"expense_date":       item.ExpenseDate,
+					"vendor":             item.Vendor,
+					"business_purpose":   item.BusinessPurpose,
+					"receipt_attachment": item.ReceiptAttachment,
+				}
+			}
+
+			logger.Info("Form parsed successfully", zap.Int("item_count", len(items)))
+			c.JSON(http.StatusOK, gin.H{
+				"success": true,
+				"items":   itemsJSON,
+				"count":   len(items),
+			})
 		})
 	}
 

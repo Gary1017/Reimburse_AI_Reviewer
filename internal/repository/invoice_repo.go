@@ -97,7 +97,7 @@ func (r *InvoiceRepository) CheckUniqueness(uniqueID string) (*models.Uniqueness
 	var createdAt time.Time
 
 	err := r.db.QueryRow(query, uniqueID).Scan(&invoiceID, &instanceID, &createdAt)
-	
+
 	if err == sql.ErrNoRows {
 		// Invoice is unique
 		return &models.UniquenessCheckResult{

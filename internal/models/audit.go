@@ -41,18 +41,18 @@ type AIAuditResult struct {
 
 // PolicyValidationResult represents policy validation results
 type PolicyValidationResult struct {
-	Compliant   bool     `json:"compliant"`
-	Violations  []string `json:"violations"`
-	Confidence  float64  `json:"confidence"`
-	Reasoning   string   `json:"reasoning"`
+	Compliant  bool     `json:"compliant"`
+	Violations []string `json:"violations"`
+	Confidence float64  `json:"confidence"`
+	Reasoning  string   `json:"reasoning"`
 }
 
 // PriceBenchmarkResult represents price benchmarking results
 type PriceBenchmarkResult struct {
-	EstimatedPriceRange  []float64 `json:"estimated_price_range"` // [min, max]
-	SubmittedPrice       float64   `json:"submitted_price"`
-	DeviationPercentage  float64   `json:"deviation_percentage"`
-	Reasonable           bool      `json:"reasonable"`
-	Confidence           float64   `json:"confidence"`
-	Reasoning            string    `json:"reasoning"`
+	EstimatedPriceRange []float64 `json:"estimated_price_range"` // [min, max]
+	SubmittedPrice      float64   `json:"submitted_price"`
+	DeviationPercentage float64   `json:"deviation_percentage"`
+	Reasonable          bool      `json:"reasonable"`
+	Confidence          float64   `json:"confidence"`
+	Reasoning           string    `json:"reasoning"`
 }

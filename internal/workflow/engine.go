@@ -19,8 +19,10 @@ type Engine struct {
 	db            *database.DB
 	instanceRepo  *repository.InstanceRepository
 	historyRepo   *repository.HistoryRepository
+	itemRepo      *repository.ReimbursementItemRepository
 	statusTracker *StatusTracker
 	approvalAPI   *lark.ApprovalAPI
+	formParser    *lark.FormParser
 	logger        *zap.Logger
 }
 
@@ -29,17 +31,21 @@ func NewEngine(
 	db *database.DB,
 	instanceRepo *repository.InstanceRepository,
 	historyRepo *repository.HistoryRepository,
+	itemRepo *repository.ReimbursementItemRepository,
 	approvalAPI *lark.ApprovalAPI,
 	logger *zap.Logger,
 ) *Engine {
 	statusTracker := NewStatusTracker(db, instanceRepo, historyRepo, logger)
+	formParser := lark.NewFormParser(logger)
 
 	return &Engine{
 		db:            db,
 		instanceRepo:  instanceRepo,
 		historyRepo:   historyRepo,
+		itemRepo:      itemRepo,
 		statusTracker: statusTracker,
 		approvalAPI:   approvalAPI,
+		formParser:    formParser,
 		logger:        logger,
 	}
 }
@@ -76,6 +82,16 @@ func (e *Engine) HandleInstanceCreated(instanceID string, eventData map[string]i
 		applicantUserID = *detail.UserId
 	}
 
+	// Parse reimbursement items from form data
+	reimbursementItems, err := e.formParser.Parse(string(formDataJSON))
+	if err != nil {
+		e.logger.Warn("Failed to parse reimbursement items from form data",
+			zap.String("instance_id", instanceID),
+			zap.Error(err))
+		// Don't fail the instance creation, but log for debugging
+		reimbursementItems = nil
+	}
+
 	// Create instance in database
 	instance := &models.ApprovalInstance{
 		LarkInstanceID:  instanceID,
@@ -100,6 +116,27 @@ func (e *Engine) HandleInstanceCreated(instanceID string, eventData map[string]i
 		}
 		if err := e.historyRepo.Create(tx, history); err != nil {
 			return fmt.Errorf("failed to create history: %w", err)
+		}
+
+		// Save parsed reimbursement items if available
+		if reimbursementItems != nil && len(reimbursementItems) > 0 {
+			for _, item := range reimbursementItems {
+				item.InstanceID = instance.ID
+				if err := e.itemRepo.Create(tx, item); err != nil {
+					e.logger.Error("Failed to save reimbursement item",
+						zap.Int64("instance_id", instance.ID),
+						zap.String("description", item.Description),
+						zap.Error(err))
+					// Continue with other items rather than failing
+					continue
+				}
+			}
+			e.logger.Info("Saved reimbursement items",
+				zap.Int64("instance_id", instance.ID),
+				zap.Int("count", len(reimbursementItems)))
+		} else {
+			e.logger.Warn("No reimbursement items parsed or saved",
+				zap.Int64("instance_id", instance.ID))
 		}
 
 		e.logger.Info("Created approval instance",

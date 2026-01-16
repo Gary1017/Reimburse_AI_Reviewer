@@ -11,9 +11,9 @@ import (
 
 // Auditor orchestrates AI-driven auditing
 type Auditor struct {
-	policyValidator *PolicyValidator
+	policyValidator  *PolicyValidator
 	priceBenchmarker *PriceBenchmarker
-	logger          *zap.Logger
+	logger           *zap.Logger
 }
 
 // NewAuditor creates a new AI auditor

@@ -27,7 +27,7 @@ type DB struct {
 func New(cfg Config, logger *zap.Logger) (*DB, error) {
 	// Enable WAL mode for better concurrency
 	dsn := fmt.Sprintf("file:%s?_journal_mode=WAL&_busy_timeout=5000&_foreign_keys=on", cfg.Path)
-	
+
 	sqlDB, err := sql.Open("sqlite3", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)

@@ -9,12 +9,12 @@ import (
 )
 
 type stubWorkflowHandler struct {
-	createdCalls int
-	approvedCalls int
-	rejectedCalls int
-	statusCalls int
+	createdCalls   int
+	approvedCalls  int
+	rejectedCalls  int
+	statusCalls    int
 	lastInstanceID string
-	lastEventData map[string]interface{}
+	lastEventData  map[string]interface{}
 }
 
 func (s *stubWorkflowHandler) HandleInstanceCreated(instanceID string, eventData map[string]interface{}) error {

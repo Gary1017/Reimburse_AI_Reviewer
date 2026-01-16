@@ -54,12 +54,12 @@ func (ef *ExcelFiller) FillTemplate(instance *models.ApprovalInstance, voucherNu
 	}
 
 	// Fill basic information
-	ef.setCell(f, sheetName, "B2", ef.companyName)                                  // Company name
-	ef.setCell(f, sheetName, "B3", ef.companyTaxID)                                 // Tax ID
-	ef.setCell(f, sheetName, "B4", voucherNumber)                                   // Voucher number
-	ef.setCell(f, sheetName, "B5", instance.SubmissionTime.Format("2006-01-02"))    // Submission date
-	ef.setCell(f, sheetName, "B6", instance.ApplicantUserID)                        // Applicant ID
-	ef.setCell(f, sheetName, "B7", instance.Department)                             // Department
+	ef.setCell(f, sheetName, "B2", ef.companyName)                               // Company name
+	ef.setCell(f, sheetName, "B3", ef.companyTaxID)                              // Tax ID
+	ef.setCell(f, sheetName, "B4", voucherNumber)                                // Voucher number
+	ef.setCell(f, sheetName, "B5", instance.SubmissionTime.Format("2006-01-02")) // Submission date
+	ef.setCell(f, sheetName, "B6", instance.ApplicantUserID)                     // Applicant ID
+	ef.setCell(f, sheetName, "B7", instance.Department)                          // Department
 
 	// Fill accounting period (会计期间)
 	accountingPeriod := instance.SubmissionTime.Format("2006年01月")

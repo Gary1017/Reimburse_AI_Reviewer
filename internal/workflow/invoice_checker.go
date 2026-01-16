@@ -15,10 +15,10 @@ import (
 
 // InvoiceChecker checks invoice uniqueness and validity
 type InvoiceChecker struct {
-	db              *database.DB
-	invoiceRepo     *repository.InvoiceRepository
+	db               *database.DB
+	invoiceRepo      *repository.InvoiceRepository
 	invoiceExtractor *invoice.Extractor
-	logger          *zap.Logger
+	logger           *zap.Logger
 }
 
 // NewInvoiceChecker creates a new invoice checker
@@ -29,16 +29,16 @@ func NewInvoiceChecker(
 	logger *zap.Logger,
 ) *InvoiceChecker {
 	return &InvoiceChecker{
-		db:              db,
-		invoiceRepo:     invoiceRepo,
+		db:               db,
+		invoiceRepo:      invoiceRepo,
 		invoiceExtractor: invoiceExtractor,
-		logger:          logger,
+		logger:           logger,
 	}
 }
 
 // CheckInstanceInvoices checks all invoices for an approval instance
 func (ic *InvoiceChecker) CheckInstanceInvoices(ctx context.Context, instanceID int64, attachmentPaths []string) error {
-	ic.logger.Info("Checking invoices for instance", 
+	ic.logger.Info("Checking invoices for instance",
 		zap.Int64("instance_id", instanceID),
 		zap.Int("attachment_count", len(attachmentPaths)))
 
@@ -68,7 +68,7 @@ func (ic *InvoiceChecker) CheckInstanceInvoices(ctx context.Context, instanceID 
 
 // processInvoice processes a single invoice file
 func (ic *InvoiceChecker) processInvoice(ctx context.Context, instanceID int64, filePath string) error {
-	ic.logger.Info("Processing invoice", 
+	ic.logger.Info("Processing invoice",
 		zap.Int64("instance_id", instanceID),
 		zap.String("file_path", filePath))
 
@@ -92,7 +92,7 @@ func (ic *InvoiceChecker) processInvoice(ctx context.Context, instanceID int64, 
 			zap.String("unique_id", uniqueID),
 			zap.Int64("duplicate_instance_id", uniquenessResult.DuplicateInstanceID),
 			zap.Time("first_seen_at", *uniquenessResult.FirstSeenAt))
-		
+
 		// Record validation failure
 		return fmt.Errorf("duplicate invoice: %s (first seen at instance %d on %s)",
 			uniqueID,

@@ -15,9 +15,9 @@ import (
 
 // Extractor extracts invoice data from PDF files using AI
 type Extractor struct {
-	client  *openai.Client
-	model   string
-	logger  *zap.Logger
+	client *openai.Client
+	model  string
+	logger *zap.Logger
 }
 
 // NewExtractor creates a new invoice extractor
@@ -43,7 +43,7 @@ func (e *Extractor) ExtractFromPDF(ctx context.Context, pdfPath string) (*models
 	// This is a simplified version using AI to extract from text
 
 	prompt := e.buildExtractionPrompt()
-	
+
 	// Call OpenAI API
 	resp, err := e.client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
 		Model:       "gpt-4",
@@ -76,7 +76,7 @@ func (e *Extractor) ExtractFromPDF(ctx context.Context, pdfPath string) (*models
 
 	var extractedData models.ExtractedInvoiceData
 	if err := json.Unmarshal([]byte(content), &extractedData); err != nil {
-		e.logger.Error("Failed to parse extraction result", 
+		e.logger.Error("Failed to parse extraction result",
 			zap.Error(err),
 			zap.String("content", content))
 		return nil, fmt.Errorf("failed to parse extraction result: %w", err)

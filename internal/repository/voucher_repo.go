@@ -146,7 +146,7 @@ func (r *VoucherRepository) GenerateVoucherNumber() (string, error) {
 
 	var lastVoucherNumber string
 	err := r.db.QueryRow(query, prefix+"%").Scan(&lastVoucherNumber)
-	
+
 	sequence := 1
 	if err == nil && lastVoucherNumber != "" {
 		// Extract sequence number from last voucher
