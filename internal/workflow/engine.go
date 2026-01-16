@@ -120,20 +120,20 @@ func (e *Engine) HandleInstanceCreated(instanceID string, eventData map[string]i
 
 		// Save parsed reimbursement items if available
 		if reimbursementItems != nil && len(reimbursementItems) > 0 {
+			itemCount := 0
 			for _, item := range reimbursementItems {
 				item.InstanceID = instance.ID
 				if err := e.itemRepo.Create(tx, item); err != nil {
-					e.logger.Error("Failed to save reimbursement item",
-						zap.Int64("instance_id", instance.ID),
-						zap.String("description", item.Description),
-						zap.Error(err))
-					// Continue with other items rather than failing
-					continue
+					// Fail fast on item save error to maintain data integrity
+					// This rolls back the entire transaction
+					return fmt.Errorf("failed to save reimbursement item (instance_id=%d, description=%s): %w",
+						instance.ID, item.Description, err)
 				}
+				itemCount++
 			}
 			e.logger.Info("Saved reimbursement items",
 				zap.Int64("instance_id", instance.ID),
-				zap.Int("count", len(reimbursementItems)))
+				zap.Int("count", itemCount))
 		} else {
 			e.logger.Warn("No reimbursement items parsed or saved",
 				zap.Int64("instance_id", instance.ID))
