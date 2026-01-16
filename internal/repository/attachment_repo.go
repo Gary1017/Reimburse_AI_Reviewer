@@ -33,6 +33,14 @@ func (r *AttachmentRepository) Create(tx *sql.Tx, attachment *models.Attachment)
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
+	// Use single timestamp for consistency between database and in-memory object
+	now := time.Now()
+	if attachment.CreatedAt.IsZero() {
+		attachment.CreatedAt = now
+	} else {
+		now = attachment.CreatedAt
+	}
+
 	var result sql.Result
 	var err error
 
@@ -47,7 +55,7 @@ func (r *AttachmentRepository) Create(tx *sql.Tx, attachment *models.Attachment)
 			attachment.DownloadStatus,
 			attachment.ErrorMessage,
 			attachment.DownloadedAt,
-			time.Now(),
+			now,
 		)
 	} else {
 		result, err = r.db.Exec(query,
@@ -60,7 +68,7 @@ func (r *AttachmentRepository) Create(tx *sql.Tx, attachment *models.Attachment)
 			attachment.DownloadStatus,
 			attachment.ErrorMessage,
 			attachment.DownloadedAt,
-			time.Now(),
+			now,
 		)
 	}
 
@@ -75,7 +83,6 @@ func (r *AttachmentRepository) Create(tx *sql.Tx, attachment *models.Attachment)
 	}
 
 	attachment.ID = id
-	attachment.CreatedAt = time.Now()
 	return nil
 }
 
