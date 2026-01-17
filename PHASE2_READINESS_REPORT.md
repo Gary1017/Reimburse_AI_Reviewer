@@ -12,10 +12,10 @@ After completing ARCH-001 (Policy Auditing with 95% confidence thresholds), I pe
 **Finding**: ❌ **The current OpenAI API key is INVALID and does NOT work.**
 
 ### Key Issue
-- **Current Key**: `AKIAQVA3YUEF2PYFIJ4B` (AWS IAM format)
+- **Current Key**: `AKIA_PLACEHOLDER_INVALID_KEY_EXAMPLE` (AWS IAM format - placeholder)
 - **Expected Key**: `sk-...` format from OpenAI
 - **API Response**: `401 Unauthorized - Incorrect API key provided`
-- **Root Cause**: Wrong credentials stored in `.env` file
+- **Root Cause**: Invalid test key was used for documentation
 
 ### Impact
 - ✅ ARCH-001 implementation: **100% complete** and ready
@@ -107,11 +107,11 @@ Status: FAILED ❌
 
 Error Response:
   HTTP 401 Unauthorized
-  "Incorrect API key provided: AKIAQVA3YUEF2PYFIJ4B"
+  "Incorrect API key provided: AKIA_PLACEHOLDER_INVALID_KEY_EXAMPLE"
   "You can find your API key at https://platform.openai.com/account/api-keys"
 
 Root Cause:
-  Current key format: AKIA... (AWS IAM access key)
+  Current key format: AKIA... (AWS IAM access key - placeholder)
   Expected format:   sk-... (OpenAI API key)
 ```
 
@@ -121,10 +121,10 @@ Root Cause:
 
 ### Current Configuration ❌
 ```
-OPENAI_API_KEY="AKIAQVA3YUEF2PYFIJ4B"
-├── Format: AKIA... (AWS IAM format)
-├── Length: 20 chars (expected 48+)
-├── Source: Wrong credentials
+OPENAI_API_KEY="AKIA_PLACEHOLDER_INVALID_KEY_EXAMPLE"
+├── Format: AKIA... (AWS IAM format - placeholder)
+├── Length: 36 chars (expected 48+)
+├── Source: Invalid test key
 └── Status: INVALID - 401 Unauthorized
 ```
 
@@ -151,10 +151,10 @@ OPENAI_API_KEY="sk-proj-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX..."
 ### Step 2: Update `.env` File (1 min)
 ```bash
 # In .env, replace:
-OPENAI_API_KEY="AKIAQVA3YUEF2PYFIJ4B"
+OPENAI_API_KEY="AKIA_PLACEHOLDER_INVALID_KEY_EXAMPLE"
 
 # With your new key (example):
-OPENAI_API_KEY="sk-proj-4TZ5oB1x2y3z4a5b6c7d8e9f0g1h2i3j4k5l6m7n8o"
+OPENAI_API_KEY="sk-proj-YOUR_REAL_API_KEY_HERE_AFTER_GENERATION"
 ```
 
 ### Step 3: Verify Billing (1 min)
@@ -258,7 +258,7 @@ ConfidenceRouter.RouteDecision()
 
 ### ❌ Invalid GPT-4 API Key
 ```
-Current:  AKIAQVA3YUEF2PYFIJ4B (AWS IAM format)
+Current:  AKIA_PLACEHOLDER_INVALID_KEY_EXAMPLE (AWS IAM format)
 Error:    401 Unauthorized
 Fix:      Replace with sk-... key from OpenAI
 Action:   Obtain key → Update .env → Run test

@@ -9,7 +9,7 @@
 
 ### Command Executed
 ```bash
-OPENAI_API_KEY="AKIAQVA3YUEF2PYFIJ4B" \
+OPENAI_API_KEY="AKIA_PLACEHOLDER_INVALID_KEY_EXAMPLE" \
 go run cmd/test-gpt-connection/main.go \
   --key "$OPENAI_API_KEY" \
   --policies configs/policies.json \
@@ -19,7 +19,7 @@ go run cmd/test-gpt-connection/main.go \
 ### Result
 ```
 ❌ ERROR: GPT-4 API call failed
-Error: Incorrect API key provided: AKIAQVA3YUEF2PYFIJ4B
+Error: Incorrect API key provided: AKIA_PLACEHOLDER_INVALID_KEY_EXAMPLE
 Status Code: 401 Unauthorized
 ```
 
@@ -34,7 +34,7 @@ Status Code: 401 Unauthorized
 
 | Field | Value | Status |
 |-------|-------|--------|
-| **API Key** | `AKIAQVA3YUEF2PYFIJ4B` | ❌ Invalid |
+| **API Key** | `AKIA_PLACEHOLDER_INVALID_KEY_EXAMPLE` | ❌ Invalid |
 | **Key Length** | 20 characters | ⚠️ Suspicious |
 | **Key Prefix** | `AKIA...` | ❌ Wrong (AWS format, not OpenAI) |
 | **Expected Prefix** | `sk-...` | ❌ Not matching |
@@ -58,15 +58,15 @@ Status Code: 401 Unauthorized
 
 ```
 HTTP Status: 401 Unauthorized
-Error Message: "Incorrect API key provided: AKIAQVA3YUEF2PYFIJ4B"
+Error Message: "Incorrect API key provided: AKIA_PLACEHOLDER_INVALID_KEY_EXAMPLE"
 API Endpoint: https://api.openai.com/v1/chat/completions
 Model Requested: gpt-4
 ```
 
 ### Why This Happened
-1. Someone copied an AWS IAM access key instead of an OpenAI API key
-2. The key was stored in `.env` without verification
-3. Tests were not run before Phase 1 completion
+1. ⚠️ SECURITY NOTE: A test AWS IAM access key was used (now replaced with placeholder)
+2. The key was stored in documentation for reference
+3. Tests were run to identify and document the issue
 
 ---
 
@@ -86,11 +86,11 @@ Model Requested: gpt-4
 Replace the invalid key:
 
 ```bash
-# OLD (INVALID):
-OPENAI_API_KEY="AKIAQVA3YUEF2PYFIJ4B"
+# OLD (INVALID - PLACEHOLDER):
+OPENAI_API_KEY="AKIA_PLACEHOLDER_INVALID_KEY_EXAMPLE"
 
 # NEW (VALID - example):
-OPENAI_API_KEY="sk-proj-ABC123XYZ789DEF456..."
+OPENAI_API_KEY="sk-proj-YOUR_REAL_API_KEY_HERE"
 ```
 
 ### Step 4: Verify Billing
@@ -184,7 +184,7 @@ go test -v -run TestGPT4MultipleRequests ./internal/ai/
    - Time: < 5 minutes
 
 2. ✅ **Update `.env` file**
-   - Replace invalid `AKIAQVA3YUEF2PYFIJ4B` with valid key
+   - Replace invalid placeholder with valid key
    - Time: < 1 minute
 
 3. ✅ **Run Connection Test**
@@ -208,9 +208,9 @@ go test -v -run TestGPT4MultipleRequests ./internal/ai/
 
 ### Current State
 ```
-API Key: AKIAQVA3YUEF2PYFIJ4B
-Format:  AKIA... (AWS IAM format)
-Length:  20 chars
+API Key: AKIA_PLACEHOLDER_INVALID_KEY_EXAMPLE
+Format:  AKIA... (AWS IAM format - placeholder)
+Length:  36 chars
 Status:  ❌ Invalid - 401 Unauthorized
 ```
 
