@@ -13,17 +13,22 @@ type Attachment struct {
 	FilePath       string     `json:"file_path"`
 	FileSize       int64      `json:"file_size"`
 	MimeType       string     `json:"mime_type"`
-	DownloadStatus string     `json:"download_status"` // PENDING, COMPLETED, FAILED
+	DownloadStatus string     `json:"download_status"` // PENDING, COMPLETED, FAILED, PROCESSING, PROCESSED
 	ErrorMessage   string     `json:"error_message,omitempty"`
 	DownloadedAt   *time.Time `json:"downloaded_at,omitempty"`
+	ProcessedAt    *time.Time `json:"processed_at,omitempty"`
+	AuditResult    string     `json:"audit_result,omitempty"` // JSON blob of InvoiceAuditResult
 	CreatedAt      time.Time  `json:"created_at"`
 }
 
 // Attachment status constants
 const (
-	AttachmentStatusPending   = "PENDING"
-	AttachmentStatusCompleted = "COMPLETED"
-	AttachmentStatusFailed    = "FAILED"
+	AttachmentStatusPending    = "PENDING"
+	AttachmentStatusCompleted  = "COMPLETED"
+	AttachmentStatusFailed     = "FAILED"
+	AttachmentStatusProcessing = "PROCESSING"
+	AttachmentStatusProcessed  = "PROCESSED"
+	AttachmentStatusAuditFailed = "AUDIT_FAILED"
 )
 
 // AttachmentReference represents attachment data extracted from Lark form

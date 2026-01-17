@@ -10,14 +10,16 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gin-gonic/gin"
+	"github.com/garyjia/ai-reimbursement/internal/ai"
 	"github.com/garyjia/ai-reimbursement/internal/config"
+	"github.com/garyjia/ai-reimbursement/internal/invoice"
 	"github.com/garyjia/ai-reimbursement/internal/lark"
 	"github.com/garyjia/ai-reimbursement/internal/repository"
 	"github.com/garyjia/ai-reimbursement/internal/worker"
 	"github.com/garyjia/ai-reimbursement/internal/workflow"
 	"github.com/garyjia/ai-reimbursement/pkg/database"
 	"github.com/garyjia/ai-reimbursement/pkg/utils"
+	"github.com/gin-gonic/gin"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 	"github.com/larksuite/oapi-sdk-go/v3/event/dispatcher"
 	larkws "github.com/larksuite/oapi-sdk-go/v3/ws"
@@ -27,7 +29,7 @@ import (
 func main() {
 	// Find config file - try current directory and parent directories
 	configPath := "configs/config.yaml"
-	
+
 	// If not found in current dir, try parent directories
 	if _, err := os.Stat(configPath); err != nil {
 		// Try going up one directory (for running from cmd/server)
@@ -46,7 +48,7 @@ func main() {
 			}
 		}
 	}
-	
+
 	// Load configuration
 	cfg, err := config.Load(configPath)
 	if err != nil {
@@ -91,6 +93,7 @@ func main() {
 	historyRepo := repository.NewHistoryRepository(db.DB, logger)
 	itemRepo := repository.NewReimbursementItemRepository(db.DB, logger)
 	attachmentRepo := repository.NewAttachmentRepository(db.DB, logger)
+	invoiceRepo := repository.NewInvoiceRepository(db.DB, logger)
 
 	// Initialize Lark client and handlers
 	larkClient := lark.NewClient(lark.Config{
@@ -143,6 +146,30 @@ func main() {
 		logger,
 	)
 
+	// Initialize PDF reader and invoice auditor for AI processing (ARCH-011)
+	// Use gpt-4o for Vision API (supports image input)
+	visionModel := "gpt-4o"
+	pdfReader := invoice.NewPDFReader(cfg.OpenAI.APIKey, visionModel, logger)
+	invoiceAuditor := ai.NewInvoiceAuditor(
+		cfg.OpenAI.APIKey,
+		cfg.OpenAI.Model,
+		cfg.Voucher.CompanyName,
+		cfg.Voucher.CompanyTaxID,
+		cfg.Voucher.PriceDeviation,
+		logger,
+	)
+
+	// Initialize invoice processor worker (ARCH-011-B)
+	invoiceProcessor := worker.NewInvoiceProcessor(
+		attachmentRepo,
+		itemRepo,
+		invoiceRepo,
+		pdfReader,
+		invoiceAuditor,
+		cfg.Voucher.AttachmentDir,
+		logger,
+	)
+
 	// Initialize status poller (fallback when webhooks unavailable)
 	statusPoller := worker.NewStatusPoller(
 		instanceRepo,
@@ -159,6 +186,12 @@ func main() {
 		logger.Fatal("Failed to start download worker", zap.Error(err))
 	}
 	logger.Info("AsyncDownloadWorker started")
+
+	// Start invoice processor worker (ARCH-011-B)
+	if err := invoiceProcessor.Start(ctx); err != nil {
+		logger.Fatal("Failed to start invoice processor", zap.Error(err))
+	}
+	logger.Info("InvoiceProcessor started (will process downloaded attachments)")
 
 	// Start status poller (polls Lark API for status changes)
 	if err := statusPoller.Start(ctx); err != nil {
@@ -205,6 +238,12 @@ func main() {
 		c.JSON(http.StatusOK, status)
 	})
 
+	// Invoice processor status endpoint (ARCH-011)
+	router.GET("/health/invoice-processor", func(c *gin.Context) {
+		status := invoiceProcessor.GetStatus()
+		c.JSON(http.StatusOK, status)
+	})
+
 	// Start HTTP server
 	srv := &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
@@ -229,6 +268,7 @@ func main() {
 
 	// Stop workers
 	downloadWorker.Stop()
+	invoiceProcessor.Stop()
 	statusPoller.Stop()
 
 	// Shutdown HTTP server

@@ -458,3 +458,95 @@ func (r *AttachmentRepository) GetPendingAttachments(limit int) ([]*models.Attac
 
 	return attachments, rows.Err()
 }
+
+// GetCompletedAttachments retrieves downloaded attachments that need AI processing
+// ARCH-011-E: Get attachments ready for invoice processing
+func (r *AttachmentRepository) GetCompletedAttachments(limit int) ([]*models.Attachment, error) {
+	query := `
+		SELECT a.id, a.item_id, a.instance_id, i.lark_instance_id, a.file_name, a.url, a.file_path, a.file_size, a.mime_type,
+			a.download_status, a.error_message, a.downloaded_at, a.created_at
+		FROM attachments a
+		JOIN approval_instances i ON a.instance_id = i.id
+		WHERE a.download_status = ?
+		ORDER BY a.downloaded_at ASC
+		LIMIT ?
+	`
+
+	rows, err := r.db.Query(query, models.AttachmentStatusCompleted, limit)
+	if err != nil {
+		r.logger.Error("Failed to get completed attachments", zap.Error(err))
+		return nil, fmt.Errorf("failed to get completed attachments: %w", err)
+	}
+	defer rows.Close()
+
+	var attachments []*models.Attachment
+	for rows.Next() {
+		var attachment models.Attachment
+		var downloadedAt sql.NullTime
+		var url sql.NullString
+		var errorMsg sql.NullString
+
+		err := rows.Scan(
+			&attachment.ID,
+			&attachment.ItemID,
+			&attachment.InstanceID,
+			&attachment.LarkInstanceID,
+			&attachment.FileName,
+			&url,
+			&attachment.FilePath,
+			&attachment.FileSize,
+			&attachment.MimeType,
+			&attachment.DownloadStatus,
+			&errorMsg,
+			&downloadedAt,
+			&attachment.CreatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan attachment: %w", err)
+		}
+
+		if url.Valid {
+			attachment.URL = url.String
+		}
+
+		if errorMsg.Valid {
+			attachment.ErrorMessage = errorMsg.String
+		}
+
+		if downloadedAt.Valid {
+			attachment.DownloadedAt = &downloadedAt.Time
+		}
+
+		attachments = append(attachments, &attachment)
+	}
+
+	return attachments, rows.Err()
+}
+
+// UpdateProcessingStatus updates attachment status with audit result
+// ARCH-011-E: Update attachment with AI processing result
+func (r *AttachmentRepository) UpdateProcessingStatus(tx *sql.Tx, id int64, status string, auditResult string, errMsg string) error {
+	query := `
+		UPDATE attachments
+		SET download_status = ?, audit_result = ?, error_message = ?, processed_at = ?
+		WHERE id = ?
+	`
+
+	processedAt := time.Now()
+	var err error
+	if tx != nil {
+		_, err = tx.Exec(query, status, auditResult, errMsg, processedAt, id)
+	} else {
+		_, err = r.db.Exec(query, status, auditResult, errMsg, processedAt, id)
+	}
+
+	if err != nil {
+		r.logger.Error("Failed to update processing status",
+			zap.Int64("id", id),
+			zap.String("status", status),
+			zap.Error(err))
+		return fmt.Errorf("failed to update processing status: %w", err)
+	}
+
+	return nil
+}
