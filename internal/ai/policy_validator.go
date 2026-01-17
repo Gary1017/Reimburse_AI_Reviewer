@@ -48,24 +48,25 @@ func (pv *PolicyValidator) Validate(ctx context.Context, item *models.Reimbursem
 		zap.Int64("item_id", item.ID),
 		zap.String("item_type", item.ItemType))
 
-	// Call OpenAI API
-	resp, err := pv.client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
+	// Build request (do NOT use JSON response format - causes issues with some models)
+	// Instead, we rely on prompt engineering to get JSON output
+	req := openai.ChatCompletionRequest{
 		Model:       pv.model,
 		Temperature: pv.temp,
 		Messages: []openai.ChatCompletionMessage{
 			{
 				Role:    openai.ChatMessageRoleSystem,
-				Content: "You are a financial compliance auditor for a Chinese enterprise. Evaluate reimbursement items against company policies. Always respond with valid JSON.",
+				Content: "You are a financial compliance auditor for a Chinese enterprise. Evaluate reimbursement items against company policies. Always respond with valid JSON wrapped in ```json and ``` markers.",
 			},
 			{
 				Role:    openai.ChatMessageRoleUser,
 				Content: prompt,
 			},
 		},
-		ResponseFormat: &openai.ChatCompletionResponseFormat{
-			Type: openai.ChatCompletionResponseFormatTypeJSONObject,
-		},
-	})
+	}
+
+	// Call OpenAI API
+	resp, err := pv.client.CreateChatCompletion(ctx, req)
 
 	if err != nil {
 		pv.logger.Error("OpenAI API call failed", zap.Error(err))
@@ -81,6 +82,23 @@ func (pv *PolicyValidator) Validate(ctx context.Context, item *models.Reimbursem
 
 	var result models.PolicyValidationResult
 	if err := json.Unmarshal([]byte(content), &result); err != nil {
+		pv.logger.Warn("Failed to parse OpenAI response as JSON, attempting to extract from text",
+			zap.Error(err),
+			zap.String("content", content))
+		
+		// Fallback: try to extract JSON from markdown code blocks
+		var jsonStr string
+		if start := findJSONStart(content); start >= 0 {
+			if end := findJSONEnd(content, start); end > start {
+				jsonStr = content[start:end]
+				if err := json.Unmarshal([]byte(jsonStr), &result); err == nil {
+					pv.logger.Info("Extracted JSON from response",
+						zap.String("extracted", jsonStr[:50]+"..."))
+					return &result, nil
+				}
+			}
+		}
+		
 		pv.logger.Error("Failed to parse OpenAI response",
 			zap.Error(err),
 			zap.String("content", content))
@@ -109,12 +127,12 @@ func (pv *PolicyValidator) buildValidationPrompt(item *models.ReimbursementItem)
 - Description: %s
 - Amount: %.2f %s
 
-**Required Response Format (JSON):**
+Please respond with ONLY a valid JSON object (no markdown, no explanation). The JSON must have this exact structure:
 {
   "compliant": boolean,
-  "violations": [string],
-  "confidence": float (0.0 to 1.0),
-  "reasoning": string
+  "violations": [string array of violation descriptions],
+  "confidence": number between 0.0 and 1.0,
+  "reasoning": string explaining your assessment
 }
 
 Provide a detailed evaluation. If there are any policy violations, list them in the violations array. Set confidence to reflect your certainty in the assessment.`,
@@ -141,4 +159,61 @@ func loadPolicies(path string) (map[string]interface{}, error) {
 	}
 
 	return policies, nil
+}
+
+// findJSONStart finds the start of JSON content in a string
+// Looks for '{' that starts valid JSON
+func findJSONStart(content string) int {
+	for i := 0; i < len(content); i++ {
+		if content[i] == '{' {
+			return i
+		}
+	}
+	return -1
+}
+
+// findJSONEnd finds the end of JSON content starting at a given position
+// Counts braces to find matching closing brace
+func findJSONEnd(content string, start int) int {
+	if start < 0 || start >= len(content) || content[start] != '{' {
+		return -1
+	}
+	
+	braceCount := 0
+	inString := false
+	escapeNext := false
+	
+	for i := start; i < len(content); i++ {
+		char := content[i]
+		
+		if escapeNext {
+			escapeNext = false
+			continue
+		}
+		
+		if char == '\\' {
+			escapeNext = true
+			continue
+		}
+		
+		if char == '"' && !escapeNext {
+			inString = !inString
+			continue
+		}
+		
+		if inString {
+			continue
+		}
+		
+		if char == '{' {
+			braceCount++
+		} else if char == '}' {
+			braceCount--
+			if braceCount == 0 {
+				return i + 1
+			}
+		}
+	}
+	
+	return -1
 }
