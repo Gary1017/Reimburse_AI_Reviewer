@@ -36,6 +36,7 @@ configs/config.yaml
 data/
 
 # Generated files
+attachments/
 generated_vouchers/
 logs/
 *.log
