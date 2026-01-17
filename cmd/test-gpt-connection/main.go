@@ -55,7 +55,7 @@ func main() {
 	if len(*apiKey) >= 4 {
 		fmt.Printf("  API key prefix: %s...\n", (*apiKey)[:4])
 	}
-	fmt.Printf("  Timeout: %v\n", timeout)
+	fmt.Printf("  Timeout: %v\n", *timeout)
 	fmt.Println()
 
 	// Check policy file exists
@@ -92,7 +92,7 @@ func main() {
 
 	// Make API call with timeout
 	fmt.Println("Sending request to OpenAI GPT-4 API...")
-	fmt.Printf("Timeout: %v\n", timeout)
+	fmt.Printf("Timeout: %v\n", *timeout)
 	fmt.Println()
 
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
