@@ -115,12 +115,13 @@ func (s *RetryStrategy) IsRetryableStatusCode(statusCode int) bool {
 
 // DownloadTask represents a single attachment download operation
 type DownloadTask struct {
-	AttachmentID int64
-	ItemID       int64
-	InstanceID   int64
-	FileName     string
-	URL          string
-	LarkToken    string
+	AttachmentID   int64
+	ItemID         int64
+	InstanceID     int64
+	LarkInstanceID string
+	FileName       string
+	URL            string
+	LarkToken      string
 
 	AttemptCount int
 	LastAttempt  time.Time
@@ -174,7 +175,7 @@ type AttachmentHandlerInterface interface {
 	DownloadAttachmentWithRetry(ctx context.Context, url, token string, maxAttempts int) (*models.AttachmentFile, error)
 	SaveFileToStorage(filename string, content []byte) (string, error)
 	ValidatePath(baseDir, filename string) error
-	GenerateFileName(instanceID, itemID int64, originalName string) string
+	GenerateFileName(larkInstanceID string, attachmentID int64, originalName string) string
 }
 
 // AsyncDownloadWorker manages background attachment downloads
@@ -332,13 +333,14 @@ func (w *AsyncDownloadWorker) processPendingAttachments() error {
 	for _, att := range attachments {
 		// Create download task
 		task := &DownloadTask{
-			AttachmentID: att.ID,
-			ItemID:       att.ItemID,
-			InstanceID:   att.InstanceID,
-			FileName:     att.FileName,
-			URL:          att.URL, // Use URL from database
-			AttemptCount: 0,
-			CreatedAt:    time.Now(),
+			AttachmentID:   att.ID,
+			ItemID:         att.ItemID,
+			InstanceID:     att.InstanceID,
+			LarkInstanceID: att.LarkInstanceID,
+			FileName:       att.FileName,
+			URL:            att.URL, // Use URL from database
+			AttemptCount:   0,
+			CreatedAt:      time.Now(),
 		}
 
 		// Attempt download
@@ -375,9 +377,10 @@ func (w *AsyncDownloadWorker) downloadSingleAttachment(task *DownloadTask) error
 	defer cancel()
 
 	// Step 1: Generate safe filename first
-	// Format: {instance_id}_{item_id}_{original_filename}
-	// This prevents directory traversal attacks and ensures uniqueness
-	safeFileName := fmt.Sprintf("%d_%d_%s", task.InstanceID, task.ItemID, task.FileName)
+	// Format: {lark_instance_id}_att{attachment_id}_{original_filename}
+	// Using LarkInstanceID ensures it's easy to link back to the approval
+	// Using AttachmentID ensures uniqueness if one approval has multiple attachments
+	safeFileName := w.attachmentHandler.GenerateFileName(task.LarkInstanceID, task.AttachmentID, task.FileName)
 
 	// Step 2: Validate file path for security (prevent directory traversal)
 	if err := w.attachmentHandler.ValidatePath("attachments", safeFileName); err != nil {

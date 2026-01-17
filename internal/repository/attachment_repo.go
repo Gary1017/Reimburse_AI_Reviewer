@@ -399,11 +399,12 @@ func (r *AttachmentRepository) DeleteByInstanceID(tx *sql.Tx, instanceID int64) 
 // GetPendingAttachments retrieves attachments that need to be downloaded
 func (r *AttachmentRepository) GetPendingAttachments(limit int) ([]*models.Attachment, error) {
 	query := `
-		SELECT id, item_id, instance_id, file_name, url, file_path, file_size, mime_type,
-			download_status, error_message, downloaded_at, created_at
-		FROM attachments
-		WHERE download_status = ?
-		ORDER BY created_at ASC
+		SELECT a.id, a.item_id, a.instance_id, i.lark_instance_id, a.file_name, a.url, a.file_path, a.file_size, a.mime_type,
+			a.download_status, a.error_message, a.downloaded_at, a.created_at
+		FROM attachments a
+		JOIN approval_instances i ON a.instance_id = i.id
+		WHERE a.download_status = ?
+		ORDER BY a.created_at ASC
 		LIMIT ?
 	`
 
@@ -425,6 +426,7 @@ func (r *AttachmentRepository) GetPendingAttachments(limit int) ([]*models.Attac
 			&attachment.ID,
 			&attachment.ItemID,
 			&attachment.InstanceID,
+			&attachment.LarkInstanceID,
 			&attachment.FileName,
 			&url,
 			&attachment.FilePath,

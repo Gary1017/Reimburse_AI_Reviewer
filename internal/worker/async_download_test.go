@@ -164,8 +164,8 @@ func (m *MockAttachmentHandler) ValidatePath(baseDir, filename string) error {
 	return nil
 }
 
-func (m *MockAttachmentHandler) GenerateFileName(instanceID, itemID int64, originalName string) string {
-	return fmt.Sprintf("%d_%d_%s", instanceID, itemID, originalName)
+func (m *MockAttachmentHandler) GenerateFileName(larkInstanceID string, attachmentID int64, originalName string) string {
+	return fmt.Sprintf("%s_att%d_%s", larkInstanceID, attachmentID, originalName)
 }
 
 func (m *MockAttachmentHandler) SetDownloadAttempts(attempts int) {
@@ -269,18 +269,20 @@ func TestAsyncDownloadWorker_PollsAttachments(t *testing.T) {
 // Related: ARCH-007-B (DownloadTask structure)
 func TestDownloadTask_Creation(t *testing.T) {
 	task := &DownloadTask{
-		AttachmentID: 1,
-		ItemID:       10,
-		InstanceID:   100,
-		FileName:     "receipt.pdf",
-		URL:          "https://lark.example.com/file/123",
-		LarkToken:    "token_xyz",
-		AttemptCount: 0,
-		CreatedAt:    time.Now(),
+		AttachmentID:   1,
+		ItemID:         10,
+		InstanceID:     100,
+		LarkInstanceID: "LARK123",
+		FileName:       "receipt.pdf",
+		URL:            "https://lark.example.com/file/123",
+		LarkToken:      "token_xyz",
+		AttemptCount:   0,
+		CreatedAt:      time.Now(),
 	}
 
 	assert.Equal(t, int64(1), task.AttachmentID)
 	assert.Equal(t, int64(10), task.ItemID)
+	assert.Equal(t, "LARK123", task.LarkInstanceID)
 	assert.Equal(t, "receipt.pdf", task.FileName)
 	assert.Equal(t, 0, task.AttemptCount)
 }

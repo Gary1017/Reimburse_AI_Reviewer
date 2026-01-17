@@ -207,9 +207,9 @@ func (h *AttachmentHandler) DownloadAttachmentWithRetry(ctx context.Context, url
 }
 
 // GenerateFileName generates unique filename with traceability
-// Implements ARCH-003: Safe file naming with instance/item/original name
-func (h *AttachmentHandler) GenerateFileName(instanceID int64, itemID int64, originalName string) string {
-	return fmt.Sprintf("%d_%d_%s", instanceID, itemID, originalName)
+// Implements ARCH-003: Safe file naming with lark instance ID/attachment ID/original name
+func (h *AttachmentHandler) GenerateFileName(larkInstanceID string, attachmentID int64, originalName string) string {
+	return fmt.Sprintf("%s_att%d_%s", larkInstanceID, attachmentID, originalName)
 }
 
 // ValidatePath validates file path to prevent directory traversal attacks

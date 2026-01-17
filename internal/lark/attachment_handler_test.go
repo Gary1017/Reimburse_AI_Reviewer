@@ -124,41 +124,41 @@ func TestAttachmentHandlerFileNaming(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		instanceID     int64
-		itemID         int64
+		larkInstanceID string
+		attachmentID   int64
 		originalName   string
 		expectedFormat string
 		intent         string
 	}{
 		{
 			name:           "ARCH-003: Standard filename format",
-			instanceID:     12345,
-			itemID:         67890,
+			larkInstanceID: "LARK12345",
+			attachmentID:   67890,
 			originalName:   "发票.pdf",
-			expectedFormat: "12345_67890_发票.pdf",
-			intent:         "Generate unique filename with instance, item, and original name",
+			expectedFormat: "LARK12345_att67890_发票.pdf",
+			intent:         "Generate unique filename with lark instance ID and attachment ID",
 		},
 		{
 			name:           "ARCH-003: Filename with spaces",
-			instanceID:     12345,
-			itemID:         67890,
+			larkInstanceID: "LARK12345",
+			attachmentID:   67890,
 			originalName:   "Receipt 2026-01-15.pdf",
-			expectedFormat: "12345_67890_Receipt 2026-01-15.pdf",
+			expectedFormat: "LARK12345_att67890_Receipt 2026-01-15.pdf",
 			intent:         "Preserve spaces in filename",
 		},
 		{
 			name:           "ARCH-003: Filename with special characters",
-			instanceID:     999,
-			itemID:         888,
+			larkInstanceID: "LARK999",
+			attachmentID:   888,
 			originalName:   "invoice (final).xlsx",
-			expectedFormat: "999_888_invoice (final).xlsx",
+			expectedFormat: "LARK999_att888_invoice (final).xlsx",
 			intent:         "Handle special characters in filename",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			filename := handler.GenerateFileName(tt.instanceID, tt.itemID, tt.originalName)
+			filename := handler.GenerateFileName(tt.larkInstanceID, tt.attachmentID, tt.originalName)
 			if filename != tt.expectedFormat {
 				t.Errorf("Expected %q, got %q", tt.expectedFormat, filename)
 			}
@@ -449,7 +449,11 @@ func TestExtractAttachmentMetadata(t *testing.T) {
 				t.Fatalf("Failed to parse test data: %v", err)
 			}
 
-			metadata := handler.ExtractFileMetadata(data)
+			// Extract widget from data
+			widgets := data["widgets"].([]interface{})
+			widget := widgets[0].(map[string]interface{})
+
+			metadata := handler.ExtractFileMetadata(widget)
 			if metadata == nil {
 				if !tt.expectError {
 					t.Errorf("Expected metadata, got nil")
@@ -457,11 +461,11 @@ func TestExtractAttachmentMetadata(t *testing.T) {
 				return
 			}
 
-			if metadata.FileName != tt.expectedName {
-				t.Errorf("Expected filename %q, got %q", tt.expectedName, metadata.FileName)
+			if metadata["file_name"] != tt.expectedName {
+				t.Errorf("Expected filename %q, got %q", tt.expectedName, metadata["file_name"])
 			}
-			if metadata.MimeType != tt.expectedMimeType {
-				t.Errorf("Expected mime type %q, got %q", tt.expectedMimeType, metadata.MimeType)
+			if metadata["mime_type"] != tt.expectedMimeType {
+				t.Errorf("Expected mime type %q, got %q", tt.expectedMimeType, metadata["mime_type"])
 			}
 		})
 	}
@@ -501,9 +505,6 @@ func TestAttachmentIntegrationWithWorkflow(t *testing.T) {
 
 	// This test verifies that the workflow engine can trigger attachment download
 	// without waiting for completion (async processing)
-
-	logger := zap.NewNop()
-	handler := NewAttachmentHandler(logger, "/tmp/attachments")
 
 	// Simulate attachment metadata that would be stored after extraction
 	attachment := &models.Attachment{
@@ -551,31 +552,7 @@ func TestFormParserExtractAttachmentV2Widgets(t *testing.T) {
 
 	// Realistic Lark form with both items and attachments
 	formData := `{
-		"form": "[
-			{
-				\"type\": \"radioV2\",
-				\"name\": \"報銷類型\",
-				\"value\": \"差旅\"
-			},
-			{
-				\"type\": \"fieldList\",
-				\"name\": \"費用明細\",
-				\"value\": [
-					[
-						{\"name\": \"日期\", \"value\": \"2026-01-15\"},
-						{\"name\": \"金額\", \"value\": 500},
-						{\"name\": \"內容\", \"value\": \"flights\"},
-						{\"name\": \"發票\", \"value\": \"file_token_123\"}
-					]
-				]
-			},
-			{
-				\"type\": \"attachmentV2\",
-				\"name\": \"附件\",
-				\"ext\": \"receipt.pdf\",
-				\"value\": [\"https://example.com/download?code=abc123\"]
-			}
-		]"
+		"form": "[{\"type\": \"radioV2\", \"name\": \"報銷類型\", \"value\": \"差旅\"}, {\"type\": \"fieldList\", \"name\": \"費用明細\", \"value\": [[{\"name\": \"日期\", \"value\": \"2026-01-15\"}, {\"name\": \"金額\", \"value\": 500}, {\"name\": \"內容\", \"value\": \"flights\"}, {\"name\": \"發票\", \"value\": \"file_token_123\"}]]}, {\"type\": \"attachmentV2\", \"name\": \"附件\", \"ext\": \"receipt.pdf\", \"value\": [\"https://example.com/download?code=abc123\"]}]"
 	}`
 
 	items, attachments, err := parser.ParseWithAttachments(formData)

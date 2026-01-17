@@ -169,6 +169,7 @@ CREATE TABLE attachments (
 ```
 
 ### Security Features
+- Improved naming: {lark_instance_id}_att{attachment_id}_{filename} for better traceability
 - Path traversal prevention (reject `..` and absolute paths)
 - Null byte filtering in filenames
 - Path validation (stay within base directory)

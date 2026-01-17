@@ -7,6 +7,7 @@ type Attachment struct {
 	ID             int64      `json:"id"`
 	ItemID         int64      `json:"item_id"`
 	InstanceID     int64      `json:"instance_id"`
+	LarkInstanceID string     `json:"lark_instance_id,omitempty"` // Unique ID from Lark
 	FileName       string     `json:"file_name"`
 	URL            string     `json:"url,omitempty"`           // Download URL from Lark Drive API
 	FilePath       string     `json:"file_path"`
