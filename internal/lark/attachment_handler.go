@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -300,11 +301,23 @@ func (h *AttachmentHandler) SaveFileToStorage(filename string, content []byte) (
 		return "", fmt.Errorf("invalid file path: %w", err)
 	}
 
+	// Ensure attachment directory exists
+	if err := os.MkdirAll(h.attachmentDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create attachment directory: %w", err)
+	}
+
 	filePath := filepath.Join(h.attachmentDir, filename)
 
-	// In production, would write to disk
-	// For now, this is a placeholder for actual file I/O
-	h.logger.Info("File would be saved",
+	// Write file to disk
+	if err := os.WriteFile(filePath, content, 0644); err != nil {
+		h.logger.Error("Failed to write file to disk",
+			zap.String("path", filePath),
+			zap.Int("size", len(content)),
+			zap.Error(err))
+		return "", fmt.Errorf("failed to write file: %w", err)
+	}
+
+	h.logger.Info("File saved successfully",
 		zap.String("path", filePath),
 		zap.Int("size", len(content)))
 

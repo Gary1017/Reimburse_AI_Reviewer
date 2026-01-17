@@ -170,14 +170,15 @@ func (e *Engine) HandleInstanceCreated(instanceID string, eventData map[string]i
 
 				ref.ItemID = reimbursementItems[idx%len(reimbursementItems)].ID
 
-				// Create attachment record in PENDING status
-				attachment := &models.Attachment{
-					ItemID:         ref.ItemID,
-					InstanceID:     instance.ID,
-					FileName:       ref.OriginalName,
-					DownloadStatus: models.AttachmentStatusPending,
-					CreatedAt:      time.Now(),
-				}
+			// Create attachment record in PENDING status
+			attachment := &models.Attachment{
+				ItemID:         ref.ItemID,
+				InstanceID:     instance.ID,
+				FileName:       ref.OriginalName,
+				URL:            ref.URL, // Store download URL from Lark API
+				DownloadStatus: models.AttachmentStatusPending,
+				CreatedAt:      time.Now(),
+			}
 
 				if err := e.attachmentRepo.Create(tx, attachment); err != nil {
 					e.logger.Error("Failed to create attachment record",
@@ -209,52 +210,126 @@ func (e *Engine) HandleInstanceCreated(instanceID string, eventData map[string]i
 
 // HandleStatusChanged handles status change events
 func (e *Engine) HandleStatusChanged(instanceID string, eventData map[string]interface{}) error {
+	e.logger.Info("Handling status changed event",
+		zap.String("instance_id", instanceID),
+		zap.Any("event_data", eventData))
+
 	instance, err := e.instanceRepo.GetByLarkInstanceID(instanceID)
 	if err != nil {
+		e.logger.Error("Failed to get instance", zap.String("instance_id", instanceID), zap.Error(err))
 		return fmt.Errorf("failed to get instance: %w", err)
 	}
 	if instance == nil {
+		e.logger.Info("Instance not found, creating it first", zap.String("instance_id", instanceID))
 		// Instance not yet created, create it first
 		return e.HandleInstanceCreated(instanceID, eventData)
 	}
 
+	e.logger.Info("Found existing instance",
+		zap.Int64("db_id", instance.ID),
+		zap.String("lark_instance_id", instanceID),
+		zap.String("current_status", instance.Status))
+
 	// Extract new status from event data
 	newStatus, ok := eventData["status"].(string)
 	if !ok {
-		e.logger.Warn("Status not found in event data", zap.String("instance_id", instanceID))
-		return nil
+		// Try alternative field names that Lark might use
+		if statusObj, ok := eventData["status"].(map[string]interface{}); ok {
+			if statusStr, ok := statusObj["status"].(string); ok {
+				newStatus = statusStr
+			} else if statusStr, ok := statusObj["type"].(string); ok {
+				newStatus = statusStr
+			}
+		}
+		
+		if newStatus == "" {
+			e.logger.Warn("Status not found in event data",
+				zap.String("instance_id", instanceID),
+				zap.Any("event_data_keys", getMapKeys(eventData)))
+			return nil
+		}
 	}
+
+	e.logger.Info("Extracted status from event",
+		zap.String("instance_id", instanceID),
+		zap.String("lark_status", newStatus))
 
 	// Map Lark status to internal status
 	internalStatus := mapLarkStatus(newStatus)
 
+	e.logger.Info("Mapped status",
+		zap.String("instance_id", instanceID),
+		zap.String("lark_status", newStatus),
+		zap.String("internal_status", internalStatus))
+
 	// Update status
-	return e.statusTracker.UpdateStatus(instance.ID, internalStatus, eventData)
+	if err := e.statusTracker.UpdateStatus(instance.ID, internalStatus, eventData); err != nil {
+		e.logger.Error("Failed to update status",
+			zap.String("instance_id", instanceID),
+			zap.String("new_status", internalStatus),
+			zap.Error(err))
+		return err
+	}
+
+	e.logger.Info("Status changed successfully",
+		zap.String("instance_id", instanceID),
+		zap.String("new_status", internalStatus))
+
+	return nil
+}
+
+// getMapKeys returns all keys from a map (helper for logging)
+func getMapKeys(m map[string]interface{}) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 // HandleInstanceApproved handles approval events
 func (e *Engine) HandleInstanceApproved(instanceID string, eventData map[string]interface{}) error {
+	e.logger.Info("Handling instance approved event",
+		zap.String("instance_id", instanceID),
+		zap.Any("event_data", eventData))
+
 	instance, err := e.instanceRepo.GetByLarkInstanceID(instanceID)
 	if err != nil {
+		e.logger.Error("Failed to get instance", zap.String("instance_id", instanceID), zap.Error(err))
 		return fmt.Errorf("failed to get instance: %w", err)
 	}
 	if instance == nil {
+		e.logger.Error("Instance not found", zap.String("instance_id", instanceID))
 		return fmt.Errorf("instance not found: %s", instanceID)
 	}
 
+	previousStatus := instance.Status
+	e.logger.Info("Found instance, updating status to APPROVED",
+		zap.Int64("db_id", instance.ID),
+		zap.String("lark_instance_id", instanceID),
+		zap.String("current_status", previousStatus))
+
 	// Update status to approved
 	if err := e.statusTracker.UpdateStatus(instance.ID, models.StatusApproved, eventData); err != nil {
+		e.logger.Error("Failed to update status to APPROVED",
+			zap.String("instance_id", instanceID),
+			zap.Error(err))
 		return err
 	}
 
 	// Set approval time
 	if err := e.instanceRepo.SetApprovalTime(nil, instance.ID, time.Now()); err != nil {
+		e.logger.Error("Failed to set approval time",
+			zap.String("instance_id", instanceID),
+			zap.Error(err))
 		return fmt.Errorf("failed to set approval time: %w", err)
 	}
 
-	e.logger.Info("Instance approved",
+	e.logger.Info("Instance approved successfully - STATUS CHANGE",
 		zap.Int64("id", instance.ID),
-		zap.String("lark_instance_id", instanceID))
+		zap.String("lark_instance_id", instanceID),
+		zap.String("previous_status", previousStatus),
+		zap.String("new_status", models.StatusApproved))
 
 	// TODO: Trigger voucher generation (Phase 4)
 	// This will be handled by the voucher generator
@@ -264,22 +339,39 @@ func (e *Engine) HandleInstanceApproved(instanceID string, eventData map[string]
 
 // HandleInstanceRejected handles rejection events
 func (e *Engine) HandleInstanceRejected(instanceID string, eventData map[string]interface{}) error {
+	e.logger.Info("Handling instance rejected event",
+		zap.String("instance_id", instanceID),
+		zap.Any("event_data", eventData))
+
 	instance, err := e.instanceRepo.GetByLarkInstanceID(instanceID)
 	if err != nil {
+		e.logger.Error("Failed to get instance", zap.String("instance_id", instanceID), zap.Error(err))
 		return fmt.Errorf("failed to get instance: %w", err)
 	}
 	if instance == nil {
+		e.logger.Error("Instance not found", zap.String("instance_id", instanceID))
 		return fmt.Errorf("instance not found: %s", instanceID)
 	}
 
+	previousStatus := instance.Status
+	e.logger.Info("Found instance, updating status to REJECTED",
+		zap.Int64("db_id", instance.ID),
+		zap.String("lark_instance_id", instanceID),
+		zap.String("current_status", previousStatus))
+
 	// Update status to rejected
 	if err := e.statusTracker.UpdateStatus(instance.ID, models.StatusRejected, eventData); err != nil {
+		e.logger.Error("Failed to update status to REJECTED",
+			zap.String("instance_id", instanceID),
+			zap.Error(err))
 		return err
 	}
 
-	e.logger.Info("Instance rejected",
+	e.logger.Info("Instance rejected successfully - STATUS CHANGE",
 		zap.Int64("id", instance.ID),
-		zap.String("lark_instance_id", instanceID))
+		zap.String("lark_instance_id", instanceID),
+		zap.String("previous_status", previousStatus),
+		zap.String("new_status", models.StatusRejected))
 
 	return nil
 }

@@ -84,20 +84,17 @@ Preparing for enterprise deployment with full observability and scalability.
 ## ⚠️ Current Shortcomings & Root Causes
 
 ### 1. Attachment Download Blocking (ARCH-007 Gap)
-**Problem**: Attachment downloads are triggered synchronously during instance creation, blocking the workflow.
+**Status**: ✅ **RESOLVED** (January 17, 2026)
 
-**Root Cause**: The current `HandleInstanceCreated` flow fetches all attachments immediately before returning. Lark API calls have variable latency (100ms–5s), and large files cause cascading delays.
+**Previous Problem**: Attachment downloads were triggered synchronously during instance creation, blocking the workflow.
 
-**Impact**: 
-- High-latency webhook responses (increased timeout risk)
-- Blocking on non-critical I/O (attachments not needed until voucher generation)
-- Cascading failures: one slow download blocks the entire approval flow
-
-**Solution Path (Phase 4)**:
-- Decouple attachment downloads into an async background worker
-- Mark attachments as PENDING after instance creation, return immediately
-- Async worker polls and downloads in background with retry logic
-- Update status to DOWNLOADED once ready for voucher generation
+**Solution Implemented**:
+- ✅ **AsyncDownloadWorker**: Background goroutine polls database for PENDING attachments.
+- ✅ **Decoupled Architecture**: Workflow engine marks attachments as PENDING and returns immediately.
+- ✅ **Lark WebSocket SDK**: Migrated from webhooks to SDK-based event subscription for 100% reliable event delivery.
+- ✅ **StatusPoller**: Fallback mechanism ensures status changes are detected even if WebSocket is interrupted.
+- ✅ **NULL Safety**: Fixed SQL scanning errors for NULL URLs and error messages.
+- ✅ **Real Storage**: Implemented actual file writing logic (replaced placeholder).
 
 ---
 
@@ -147,7 +144,7 @@ Preparing for enterprise deployment with full observability and scalability.
 | Price Benchmarking | ARCH-004 | ✅ 80% | Market pricing (needs feedback loop) |
 | Attachment Tracking | ARCH-005 | ✅ 100% | PENDING → DOWNLOADED → ARCHIVED |
 | Voucher Generation | ARCH-006 | ✅ 100% | Excel filler + email delivery |
-| Async Downloads | ARCH-007 | ⏳ 0% | Background worker (Phase 4) |
+| Async Downloads | ARCH-007 | ✅ 100% | Background worker (Phase 4) |
 | Exception Routing | ARCH-008 | ⏳ 0% | Low-confidence to human review (Phase 4) |
 | Observability | ARCH-009 | ⏳ 5% | Structured logs only (Phase 4/5) |
 | Scalability | ARCH-010 | ⏳ 50% | SQLite WAL (needs distributed setup) |

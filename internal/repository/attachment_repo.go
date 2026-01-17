@@ -28,9 +28,9 @@ func NewAttachmentRepository(db *sql.DB, logger *zap.Logger) *AttachmentReposito
 func (r *AttachmentRepository) Create(tx *sql.Tx, attachment *models.Attachment) error {
 	query := `
 		INSERT INTO attachments (
-			item_id, instance_id, file_name, file_path, file_size, mime_type,
+			item_id, instance_id, file_name, url, file_path, file_size, mime_type,
 			download_status, error_message, downloaded_at, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	// Use single timestamp for consistency between database and in-memory object
@@ -49,6 +49,7 @@ func (r *AttachmentRepository) Create(tx *sql.Tx, attachment *models.Attachment)
 			attachment.ItemID,
 			attachment.InstanceID,
 			attachment.FileName,
+			attachment.URL,
 			attachment.FilePath,
 			attachment.FileSize,
 			attachment.MimeType,
@@ -62,6 +63,7 @@ func (r *AttachmentRepository) Create(tx *sql.Tx, attachment *models.Attachment)
 			attachment.ItemID,
 			attachment.InstanceID,
 			attachment.FileName,
+			attachment.URL,
 			attachment.FilePath,
 			attachment.FileSize,
 			attachment.MimeType,
@@ -89,7 +91,7 @@ func (r *AttachmentRepository) Create(tx *sql.Tx, attachment *models.Attachment)
 // GetByID retrieves an attachment by ID
 func (r *AttachmentRepository) GetByID(id int64) (*models.Attachment, error) {
 	query := `
-		SELECT id, item_id, instance_id, file_name, file_path, file_size, mime_type,
+		SELECT id, item_id, instance_id, file_name, url, file_path, file_size, mime_type,
 			download_status, error_message, downloaded_at, created_at
 		FROM attachments
 		WHERE id = ?
@@ -97,17 +99,20 @@ func (r *AttachmentRepository) GetByID(id int64) (*models.Attachment, error) {
 
 	var attachment models.Attachment
 	var downloadedAt sql.NullTime
+	var url sql.NullString
+	var errorMsg sql.NullString
 
 	err := r.db.QueryRow(query, id).Scan(
 		&attachment.ID,
 		&attachment.ItemID,
 		&attachment.InstanceID,
 		&attachment.FileName,
+		&url,
 		&attachment.FilePath,
 		&attachment.FileSize,
 		&attachment.MimeType,
 		&attachment.DownloadStatus,
-		&attachment.ErrorMessage,
+		&errorMsg,
 		&downloadedAt,
 		&attachment.CreatedAt,
 	)
@@ -120,6 +125,14 @@ func (r *AttachmentRepository) GetByID(id int64) (*models.Attachment, error) {
 		return nil, fmt.Errorf("failed to get attachment: %w", err)
 	}
 
+	if url.Valid {
+		attachment.URL = url.String
+	}
+
+	if errorMsg.Valid {
+		attachment.ErrorMessage = errorMsg.String
+	}
+
 	if downloadedAt.Valid {
 		attachment.DownloadedAt = &downloadedAt.Time
 	}
@@ -130,7 +143,7 @@ func (r *AttachmentRepository) GetByID(id int64) (*models.Attachment, error) {
 // GetByItemID retrieves all attachments for a reimbursement item
 func (r *AttachmentRepository) GetByItemID(itemID int64) ([]*models.Attachment, error) {
 	query := `
-		SELECT id, item_id, instance_id, file_name, file_path, file_size, mime_type,
+		SELECT id, item_id, instance_id, file_name, url, file_path, file_size, mime_type,
 			download_status, error_message, downloaded_at, created_at
 		FROM attachments
 		WHERE item_id = ?
@@ -148,12 +161,14 @@ func (r *AttachmentRepository) GetByItemID(itemID int64) ([]*models.Attachment, 
 	for rows.Next() {
 		var attachment models.Attachment
 		var downloadedAt sql.NullTime
+		var url sql.NullString
 
 		err := rows.Scan(
 			&attachment.ID,
 			&attachment.ItemID,
 			&attachment.InstanceID,
 			&attachment.FileName,
+			&url,
 			&attachment.FilePath,
 			&attachment.FileSize,
 			&attachment.MimeType,
@@ -165,6 +180,10 @@ func (r *AttachmentRepository) GetByItemID(itemID int64) ([]*models.Attachment, 
 		if err != nil {
 			r.logger.Error("Failed to scan attachment", zap.Error(err))
 			return nil, fmt.Errorf("failed to scan attachment: %w", err)
+		}
+
+		if url.Valid {
+			attachment.URL = url.String
 		}
 
 		if downloadedAt.Valid {
@@ -180,7 +199,7 @@ func (r *AttachmentRepository) GetByItemID(itemID int64) ([]*models.Attachment, 
 // GetByInstanceID retrieves all attachments for an approval instance
 func (r *AttachmentRepository) GetByInstanceID(instanceID int64) ([]*models.Attachment, error) {
 	query := `
-		SELECT id, item_id, instance_id, file_name, file_path, file_size, mime_type,
+		SELECT id, item_id, instance_id, file_name, url, file_path, file_size, mime_type,
 			download_status, error_message, downloaded_at, created_at
 		FROM attachments
 		WHERE instance_id = ?
@@ -205,6 +224,7 @@ func (r *AttachmentRepository) GetByInstanceID(instanceID int64) ([]*models.Atta
 			&attachment.ItemID,
 			&attachment.InstanceID,
 			&attachment.FileName,
+			&attachment.URL,
 			&attachment.FilePath,
 			&attachment.FileSize,
 			&attachment.MimeType,
@@ -379,7 +399,7 @@ func (r *AttachmentRepository) DeleteByInstanceID(tx *sql.Tx, instanceID int64) 
 // GetPendingAttachments retrieves attachments that need to be downloaded
 func (r *AttachmentRepository) GetPendingAttachments(limit int) ([]*models.Attachment, error) {
 	query := `
-		SELECT id, item_id, instance_id, file_name, file_path, file_size, mime_type,
+		SELECT id, item_id, instance_id, file_name, url, file_path, file_size, mime_type,
 			download_status, error_message, downloaded_at, created_at
 		FROM attachments
 		WHERE download_status = ?
@@ -398,22 +418,33 @@ func (r *AttachmentRepository) GetPendingAttachments(limit int) ([]*models.Attac
 	for rows.Next() {
 		var attachment models.Attachment
 		var downloadedAt sql.NullTime
+		var url sql.NullString
+		var errorMsg sql.NullString
 
 		err := rows.Scan(
 			&attachment.ID,
 			&attachment.ItemID,
 			&attachment.InstanceID,
 			&attachment.FileName,
+			&url,
 			&attachment.FilePath,
 			&attachment.FileSize,
 			&attachment.MimeType,
 			&attachment.DownloadStatus,
-			&attachment.ErrorMessage,
+			&errorMsg,
 			&downloadedAt,
 			&attachment.CreatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan attachment: %w", err)
+		}
+
+		if url.Valid {
+			attachment.URL = url.String
+		}
+
+		if errorMsg.Valid {
+			attachment.ErrorMessage = errorMsg.String
 		}
 
 		if downloadedAt.Valid {

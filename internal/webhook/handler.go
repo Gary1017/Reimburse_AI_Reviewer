@@ -2,9 +2,9 @@ package webhook
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/garyjia/ai-reimbursement/internal/workflow"
 	"github.com/gin-gonic/gin"
@@ -48,6 +48,13 @@ type EventHeader struct {
 
 // Handle processes incoming webhook requests
 func (h *Handler) Handle(c *gin.Context) {
+	// Log entry point - verify requests are reaching this handler
+	h.logger.Info("=== WEBHOOK HANDLER CALLED ===",
+		zap.String("method", c.Request.Method),
+		zap.String("path", c.Request.URL.Path),
+		zap.String("remote_addr", c.Request.RemoteAddr),
+		zap.String("user_agent", c.Request.UserAgent()))
+
 	// Read request body
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
@@ -55,6 +62,10 @@ func (h *Handler) Handle(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read request body"})
 		return
 	}
+
+	h.logger.Info("Request body read successfully",
+		zap.Int("body_size", len(body)),
+		zap.String("content_type", c.GetHeader("Content-Type")))
 
 	// Get headers for verification
 	timestamp := c.GetHeader("X-Lark-Request-Timestamp")
@@ -79,21 +90,36 @@ func (h *Handler) Handle(c *gin.Context) {
 	}
 
 	// Verify webhook signature
+	h.logger.Info("Verifying webhook signature",
+		zap.String("timestamp", timestamp),
+		zap.String("nonce", nonce),
+		zap.Bool("has_signature", signature != ""))
+
 	if !h.verifier.VerifySignature(timestamp, nonce, signature, string(body)) {
-		h.logger.Warn("Invalid webhook signature",
+		h.logger.Warn("Invalid webhook signature - REJECTING REQUEST",
 			zap.String("timestamp", timestamp),
-			zap.String("nonce", nonce))
+			zap.String("nonce", nonce),
+			zap.String("signature", signature))
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid signature"})
 		return
 	}
 
+	h.logger.Info("Webhook signature verified successfully")
+
 	// Parse event
 	var event ApprovalEvent
 	if err := json.Unmarshal(body, &event); err != nil {
-		h.logger.Error("Failed to parse event", zap.Error(err))
+		h.logger.Error("Failed to parse event JSON",
+			zap.Error(err),
+			zap.String("body_preview", string(body[:min(len(body), 200)])))
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to parse event"})
 		return
 	}
+
+	h.logger.Info("Event parsed successfully",
+		zap.String("event_id", event.Header.EventID),
+		zap.String("event_type", event.Header.EventType),
+		zap.String("create_time", event.Header.CreateTime))
 
 	// Filter by approval code if provided
 	if h.approvalCode != "" {
@@ -114,15 +140,23 @@ func (h *Handler) Handle(c *gin.Context) {
 		return
 	}
 
-	// Log event receipt
+	// Log event receipt with full details
 	h.logger.Info("Received approval event",
 		zap.String("event_id", event.Header.EventID),
-		zap.String("event_type", event.Header.EventType))
+		zap.String("event_type", event.Header.EventType),
+		zap.String("create_time", event.Header.CreateTime),
+		zap.Any("event_keys", getEventKeys(event.Event)))
 
 	// Process event asynchronously to respond quickly to Lark
+	h.logger.Info("Starting async event processing",
+		zap.String("event_id", event.Header.EventID),
+		zap.String("event_type", event.Header.EventType))
 	go h.processEvent(&event)
 
 	// Respond immediately to Lark
+	h.logger.Info("Responding to Lark webhook",
+		zap.String("event_id", event.Header.EventID),
+		zap.String("status", "200 OK"))
 	c.JSON(http.StatusOK, gin.H{"message": "Event received"})
 }
 
@@ -130,16 +164,35 @@ func (h *Handler) Handle(c *gin.Context) {
 func (h *Handler) processEvent(event *ApprovalEvent) {
 	defer func() {
 		if r := recover(); r != nil {
-			h.logger.Error("Panic in event processing", zap.Any("panic", r))
+			h.logger.Error("Panic in event processing",
+				zap.Any("panic", r),
+				zap.String("event_id", event.Header.EventID),
+				zap.String("event_type", event.Header.EventType))
 		}
 	}()
+
+	h.logger.Info("=== ASYNC EVENT PROCESSING STARTED ===",
+		zap.String("event_id", event.Header.EventID),
+		zap.String("event_type", event.Header.EventType),
+		zap.Any("event_keys", getEventKeys(event.Event)))
 
 	// Extract instance ID from event
 	instanceID, ok := event.Event["instance_code"].(string)
 	if !ok {
-		h.logger.Error("Instance ID not found in event")
-		return
+		// Try alternative field names
+		if id, ok := event.Event["instance_id"].(string); ok {
+			instanceID = id
+			h.logger.Info("Found instance_id instead of instance_code", zap.String("instance_id", instanceID))
+		} else {
+			h.logger.Error("Instance ID not found in event - checking available keys",
+				zap.Any("event_keys", getEventKeys(event.Event)),
+				zap.Any("event_data", event.Event))
+			return
+		}
 	}
+
+	h.logger.Info("Extracted instance ID",
+		zap.String("instance_id", instanceID))
 
 	// Determine event type and handle accordingly
 	eventType := event.Header.EventType
@@ -164,19 +217,59 @@ func (h *Handler) processEvent(event *ApprovalEvent) {
 		}
 
 	case contains(eventType, "status_changed"):
-		h.logger.Info("Processing status changed event", zap.String("instance_id", instanceID))
+		h.logger.Info("Processing status changed event",
+			zap.String("instance_id", instanceID),
+			zap.String("event_type", eventType),
+			zap.Any("event_data", event.Event))
 		if err := h.workflowEngine.HandleStatusChanged(instanceID, event.Event); err != nil {
-			h.logger.Error("Failed to handle status changed", zap.String("instance_id", instanceID), zap.Error(err))
+			h.logger.Error("Failed to handle status changed",
+				zap.String("instance_id", instanceID),
+				zap.String("event_type", eventType),
+				zap.Error(err))
+		} else {
+			h.logger.Info("Status changed event processed successfully",
+				zap.String("instance_id", instanceID))
 		}
 
 	default:
-		h.logger.Info("Unhandled event type", zap.String("event_type", eventType))
+		h.logger.Warn("Unhandled event type - status change may be in this event",
+			zap.String("event_type", eventType),
+			zap.String("instance_id", instanceID),
+			zap.Any("event_data", event.Event))
+		
+		// Try to handle as status change if it contains status information
+		if status, ok := event.Event["status"].(string); ok {
+			h.logger.Info("Found status in unhandled event, attempting to process as status change",
+				zap.String("event_type", eventType),
+				zap.String("status", status))
+			if err := h.workflowEngine.HandleStatusChanged(instanceID, event.Event); err != nil {
+				h.logger.Error("Failed to handle unhandled event as status change",
+					zap.String("instance_id", instanceID),
+					zap.String("event_type", eventType),
+					zap.Error(err))
+			}
+		}
 	}
 }
 
-// contains checks if a string contains a substring
+// contains checks if a string contains a substring (case-insensitive)
 func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) &&
-		(s[:len(substr)] == substr || s[len(s)-len(substr):] == substr ||
-			fmt.Sprintf("%s", s) != s)) // simplified check
+	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
+}
+
+// getEventKeys returns all keys from event map (helper for logging)
+func getEventKeys(event map[string]interface{}) []string {
+	keys := make([]string, 0, len(event))
+	for k := range event {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+// min returns the minimum of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
