@@ -2,229 +2,111 @@
 
 An enterprise-grade automated reimbursement workflow system that integrates Lark approval processes with AI-powered auditing, transforming structured form data into legally-binding vouchers compliant with Mainland China accounting regulations.
 
+**Status**: Phase 3 Complete (Attachment Handling), Phase 4–5 Planned  
+**Supported Deployments**: Local development, Docker, AWS ECS Fargate (via Terraform)
+
 ## 🌟 Key Features
 
-- **Automated Approval Tracking**: Real-time synchronization with Lark approval instances
-- **AI-Driven Auditing**: Semantic policy validation and market-price benchmarking using OpenAI GPT-4
-- **Invoice Uniqueness Checking**: Automatically extracts and validates invoice codes (发票代码 + 发票号码) to prevent duplicate submissions
-- **Exception-Based Management**: Intelligent routing of approvals requiring manual review
-- **Regulatory Compliance**: Automatic generation of accounting vouchers compliant with China standards
-- **Zero-Error Processing**: ACID transactions with complete audit trail (10-year retention)
-- **Seamless Collaboration**: Direct integration with external accountants via Lark messaging
-
-## 🏗️ Architecture
-
-The system is built on three core layers:
-
-1. **Integration Layer**: Lark webhooks, OpenAI API, message delivery
-2. **Business Logic Layer**: Workflow engine, AI auditing, invoice verification, voucher generation
-3. **Data Persistence Layer**: SQLite with transaction safety and audit trails
-
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed architecture documentation.
-
-For comprehensive documentation, see [docs/README.md](docs/README.md) - the main documentation index.
-
-## 📋 Prerequisites
-
-- Go 1.22 or higher
-- SQLite 3.42+
-- **Lark Open Platform account** with approval workflow access
-- **OpenAI API key**
-- **Excel template** for reimbursement forms
-
-## 🔧 Configuration
-
-### Required Environment Variables
-
-| Variable | Description | Example | How to Get It |
-|----------|-------------|---------|---------------|
-| `LARK_APP_ID` | Lark application ID | `cli_a1b2c3d4e5f6` | Lark Open Platform Console → Your App |
-| `LARK_APP_SECRET` | Lark application secret | `AbCdEfGhIjKlMn...` | Lark Open Platform Console → Your App |
-| `LARK_APPROVAL_CODE` | Approval definition code | `E3254848-D172-4169...` | See "Getting Approval Code" below |
-| `OPENAI_API_KEY` | OpenAI API key | `sk-proj-...` | OpenAI Platform → API keys |
-| `ACCOUNTANT_EMAIL` | Accountant's email | `accountant@company.com` | Your accountant |
-| `COMPANY_NAME` | Company name | `Your Company Ltd.` | Your company |
-| `COMPANY_TAX_ID` | Chinese tax ID (18 digits) | `91110000123456789X` | Your tax ID |
-
-### Getting the Lark Approval Code
-
-The approval code is the unique identifier for your approval definition:
-
-1. Go to [Lark Approval Admin Console](https://www.feishu.cn/approval/admin/approvalList?devMode=on) (with `devMode=on`)
-2. Find your reimbursement approval and click **Edit**
-3. In the browser address bar, find the parameter: `definitionCode=E3254848-D172-4169-B03E-744E7CD11F06`
-4. Copy the value after `definitionCode=` - this is your `LARK_APPROVAL_CODE`
-
-**Security Note**: Keep this approval code confidential as it grants access to all approval data under this definition.
-
-## 🚀 Quick Start
-
-### Option 1: Local Development
-
-```bash
-# 1. Clone the repository
-git clone git@github.com:Gary1017/Reimburse_AI_Reviewer.git
-cd Reimburse_AI_Reviewer
-
-# 2. Copy configuration files
-cp configs/config.example.yaml configs/config.yaml
-cp .env.example .env
-
-# 3. Configure your credentials
-# Edit .env file with your actual credentials (never commit this file!)
-# The application will automatically load .env file if it exists
-# Alternatively, you can export environment variables directly:
-#   export LARK_APP_ID="your_app_id"
-#   export LARK_APP_SECRET="your_app_secret"
-#   ... etc
-
-# 4. Place your Excel template
-cp your_template.xlsx templates/reimbursement_form.xlsx
-
-# 5. Install dependencies
-go mod download
-
-# 6. Run database migrations
-go run cmd/server/main.go
-
-# 7. Start the server
-go run cmd/server/main.go
-```
-
-### Option 2: Docker (Optional)
-
-Use this only if Docker is installed locally:
-
-```bash
-# Build and run with Docker Compose
-docker-compose up -d
-
-# View logs
-docker-compose logs -f app
-```
-
-### Option 3: Deploy to AWS (CI/CD)
-
-See [docs/QUICKSTART_DEVOPS.md](docs/QUICKSTART_DEVOPS.md) for complete deployment guide.
-
-## 📊 Invoice Uniqueness Feature
-
-The system automatically checks invoice uniqueness to prevent duplicate submissions:
-
-### How It Works
-
-1. **PDF Download**: When an approval instance is created, all attachments are downloaded
-2. **Invoice Extraction**: AI extracts key invoice fields:
-   - **发票代码 (Invoice Code)**: 10-12 digit code
-   - **发票号码 (Invoice Number)**: 8-digit number
-   - Other fields: amount, date, seller/buyer info
-3. **Uniqueness Check**: Combines code + number to create unique ID
-4. **Validation**: Checks against all previous invoices in database
-5. **Action**:
-   - ✅ **Unique**: Approval proceeds normally
-   - ❌ **Duplicate**: Approval is flagged and rejected with details of first submission
-
-### Invoice Data Stored
-
-```json
-{
-  "invoice_code": "1200192130",
-  "invoice_number": "00185025",
-  "unique_id": "1200192130-00185025",
-  "invoice_date": "2024-12-15",
-  "total_amount": 1580.00,
-  "seller_name": "北京科技有限公司",
-  "seller_tax_id": "91110108MA01XXXXX",
-  "buyer_name": "Your Company Ltd.",
-  "buyer_tax_id": "91110000123456789X"
-}
-```
-
-## 🔐 Security
-
-- **Webhook Verification**: All incoming webhooks are validated
-- **Credential Management**: Environment-based secrets (never in code)
-- **Audit Trails**: Complete transaction history with 10-year retention
-- **Input Validation**: Sanitization and type checking
-- **ACID Transactions**: Zero-error database operations
-
-See [docs/SECURITY.md](docs/SECURITY.md) for complete security documentation.
-
-## 📈 Workflow
-
-```
-User submits reimbursement in Lark
-    ↓
-Lark sends webhook to system
-    ↓
-System downloads attachments
-    ↓
-AI extracts invoice data (发票代码 + 发票号码)
-    ↓
-Check invoice uniqueness
-    ├─ Duplicate → Reject with error
-    └─ Unique → Continue
-        ↓
-    AI policy validation
-        ↓
-    AI price benchmarking
-        ↓
-    Exception-based routing
-    ├─ High confidence → Auto-approve
-    └─ Low confidence → Manual review
-        ↓
-    Generate Excel voucher
-        ↓
-    Send to accountant via Lark
-        ↓
-    Mark as COMPLETED
-```
-
-## 🧪 Testing
-
-```bash
-# Run all tests
-go test ./...
-
-# Run with coverage
-go test -cover ./...
-
-# Test specific package
-go test ./internal/invoice/...
-```
-
-## 📚 Documentation
-
-- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)**: Complete system design (200+ pages)
-- **[DEVOPS_SETUP.md](docs/DEVOPS_SETUP.md)**: Full DevOps guide with AWS deployment
-- **[QUICKSTART_DEVOPS.md](docs/QUICKSTART_DEVOPS.md)**: 30-minute quick start for deployment
-- **[SECURITY.md](docs/SECURITY.md)**: Security architecture and best practices
-- **[DEPLOYMENT.md](docs/DEPLOYMENT.md)**: Production deployment guide
-- **[API.md](docs/API.md)**: API and webhook reference
-
-## 🛠️ Technology Stack
-
-- **Language**: Go 1.22
-- **Database**: SQLite with WAL mode
-- **Lark SDK**: github.com/larksuite/oapi-sdk-go/v3
-- **AI Provider**: OpenAI GPT-4
-- **Excel**: github.com/xuri/excelize/v2
-- **Configuration**: Viper
-- **Logging**: Zap
-- **HTTP**: Gin
-
-## 📞 Support
-
-For issues and questions:
-- Check logs in `logs/` directory
-- Review documentation in `docs/` directory
-- Verify configuration in `configs/config.yaml`
-- Contact development team
-
-## 📝 License
-
-Proprietary - Internal Use Only
+| Feature | Status | Details |
+|---------|--------|---------|
+| **Webhook Integration** | ✅ Complete | Real-time Lark event streaming with SHA256 signature verification |
+| **AI Policy Auditing** | ✅ Complete | OpenAI GPT-4 semantic validation; confidence scoring (Gap: no threshold-based routing) |
+| **Market Price Benchmarking** | ✅ Complete | AI-driven pricing validation; flagging outliers (Gap: no feedback loop) |
+| **Form Parsing** | ✅ Complete | Multi-item extraction; Chinese field normalization (TRAVEL, MEAL, ACCOMMODATION, etc.) |
+| **Invoice Deduplication** | ✅ Complete | Automatic duplicate detection via database lookups |
+| **Voucher Generation** | ✅ Complete | Compliant Excel generation; email delivery to accountants |
+| **Async Attachments** | ⏳ Planned (Phase 4) | Non-blocking Lark Drive downloads; polling-based sync |
+| **Exception Routing** | ⏳ Planned (Phase 4) | Configurable confidence thresholds; low-confidence items routed to human review |
+| **Observability** | ⏳ Planned (Phase 4/5) | Prometheus metrics, OpenTelemetry tracing, health checks |
+| **10-Year Audit Trail** | ✅ Complete | Immutable transaction logging with ACID guarantees |
 
 ---
 
+## 🚀 Development Roadmap
+
+| Phase | Status | Goal | Key Milestones |
+|-------|--------|------|-----------------|
+| **Phase 1** | ✅ Done | Foundation | Webhook verification, AI policy auditing, SQLite schema |
+| **Phase 2** | ✅ Done | Data Extraction | Form parsing, item normalization, Chinese field mapping |
+| **Phase 3** | ✅ Done | Attachment Handling | Receipt management, voucher generation, email delivery |
+| **Phase 4** | ⏳ Planned | Automation & Reliability | Async downloads, retry logic, health checks, exception routing |
+| **Phase 5** | ⏳ Planned | Production & Scale | AWS deployment, observability, immutable audit trail, 1000+ approvals/day |
+
+**For detailed phase breakdowns and task checklists, see [DEVELOPMENT_PLAN.md](docs/DEVELOPMENT_PLAN.md)**.
+
+---
+
+## ⚠️ Known Gaps & Limitations (To be addressed in Phase 4/5)
+
+### Current Shortcomings (Root-Cause Oriented)
+
+1. **Attachment Download Blocking** (ARCH-007)
+   - **Issue**: File downloads from Lark Drive are synchronous, blocking webhook response (100ms–5s per file)
+   - **Root Cause**: No background worker queue; downloads happen inline in `HandleInstanceCreated`
+   - **Impact**: High webhook latency, timeout risk, cascading failures on slow networks
+   - **Plan**: Decouple into async worker; mark as PENDING, download in background
+
+2. **Limited AI Confidence Thresholds** (ARCH-008)
+   - **Issue**: All items go through Lark approval queue even with high-confidence AI scores
+   - **Root Cause**: No configurable threshold logic; no exception-based routing
+   - **Impact**: Cannot auto-approve high-confidence items; manual review overhead
+   - **Plan**: Introduce configurable thresholds (e.g., >0.95 → AUTO_APPROVED, 0.7–0.95 → IN_REVIEW)
+
+3. **No Observability/Monitoring** (ARCH-009)
+   - **Issue**: Cannot detect production bottlenecks or SLO violations in real-time
+   - **Root Cause**: Structured logs only; no metrics, tracing, or central alerting
+   - **Impact**: Difficult to debug issues; no performance baselines
+   - **Plan**: Add Prometheus metrics, OpenTelemetry tracing, health endpoint
+
+---
+
+## 📖 Detailed Documentation
+
+- **[Architecture Design](docs/ARCHITECTURE.md)**: Deep dive into system layers, components, and data flow (with Mermaid diagrams).
+- **[Development Plan](docs/DEVELOPMENT_PLAN.md)**: Step-by-step roadmap and links to phase-specific development reports.
+- **[Phase Reports](docs/DEVELOPMENT/)**: Detailed reports for each development phase.
+
+---
+
+## 🚀 Quick Start Guide
+
+### 📋 Prerequisites
+- Go 1.22+
+- SQLite 3.42+
+- Lark Open Platform account with approval workflow access.
+- OpenAI API key.
+
+### 🔧 Local Setup
+1. **Clone & Config**:
+   ```bash
+   git clone git@github.com:Gary1017/Reimburse_AI_Reviewer.git
+   cd Reimburse_AI_Reviewer
+   cp configs/config.example.yaml configs/config.yaml
+   cp .env.example .env
+   ```
+2. **Environment Variables**: Edit `.env` with your `LARK_APP_ID`, `LARK_APP_SECRET`, `OPENAI_API_KEY`, etc.
+3. **Template**: Place your Excel template at `templates/reimbursement_form.xlsx`.
+4. **Run**:
+   ```bash
+   go mod download
+   go run cmd/server/main.go
+   ```
+
+---
+
+## 🛠️ Deployment Guide
+
+### Option 1: Docker (Recommended)
+```bash
+docker-compose up -d
+```
+
+### Option 2: AWS Production (CI/CD)
+The system is designed for AWS deployment using GitHub Actions:
+1. **GitHub Secrets**: Configure `AWS_ACCESS_KEY_ID`, `LARK_APP_ID`, `OPENAI_API_KEY`, etc., in your repository settings.
+2. **Infrastructure**: Use the provided Terraform scripts in `aws/terraform/` to set up ECR, ECS Fargate, and EFS.
+3. **Storage**: EFS is required for persistent SQLite data and generated vouchers.
+4. **Deploy**: Push to `main` branch to trigger automatic deployment via `.github/workflows/deploy.yml`.
+
+---
 **Built with ❤️ for enterprise financial automation**
