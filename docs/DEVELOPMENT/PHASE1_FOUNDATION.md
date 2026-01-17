@@ -25,17 +25,42 @@ Establish the core integration between the Lark Open Platform and the AI Reimbur
 - **Voucher Generation**: Basic Excel population logic for creating accounting vouchers from approval data.
 
 ## 3. Technical Implementation
-- **Files**:
+- **Files** (Original):
   - `internal/workflow/engine.go`: Core state machine.
   - `internal/ai/policy_validator.go`: AI logic.
   - `pkg/database/sqlite.go`: Database connectivity.
   - `internal/webhook/handler.go`: Webhook entry point.
 
+- **Files** (ARCH-001 Enhancement - January 17, 2026):
+  - `internal/ai/confidence_threshold.go`: ConfidenceThreshold model, ConfidenceCalculator, ConfidenceRouter
+  - `internal/ai/confidence_threshold_test.go`: 11 comprehensive unit tests (TEST-001 through TEST-011)
+  - `docs/DEVELOPMENT/PHASE1_ARCH001_CONFIDENCE_THRESHOLDS.md`: Detailed implementation report
+
 ## 4. Verification Results
+
+### Original Phase 1 (January 10, 2026)
 - ✅ Successful webhook signature validation.
 - ✅ AI audit correctly identifies policy violations in test data.
 - ✅ Audit records correctly persisted in SQLite.
 
+### ARCH-001 Enhancement (January 17, 2026)
+- ✅ ConfidenceThreshold model with validation
+  - High threshold: 0.95 (auto-approve boundary)
+  - Low threshold: 0.70 (manual review boundary)
+- ✅ ConfidenceCalculator computes normalized scores [0.0, 1.0]
+  - All checks pass (policy + price + unique): 1.0
+  - Two pass: 0.67
+  - One pass: 0.33
+  - None pass: 0.0
+- ✅ ConfidenceRouter routes decisions
+  - HIGH (≥0.95) → AUTO_APPROVED (skip manual queue)
+  - MEDIUM (0.70-0.95) → IN_REVIEW (route to Lark approval)
+  - LOW (<0.70) → REJECTED (documented closure)
+- ✅ AuditDecision immutability enforced
+- ✅ ThresholdConfig versioning for audit trail
+- ✅ All 11 unit tests passing
+
 ---
-**Completion Date**: January 10, 2026
-**Status**: ✅ COMPLETE
+**Original Completion Date**: January 10, 2026  
+**Enhancement Completion Date**: January 17, 2026  
+**Status**: ✅ COMPLETE (ARCH-001: 90% → 100%)
