@@ -550,3 +550,106 @@ func (r *AttachmentRepository) UpdateProcessingStatus(tx *sql.Tx, id int64, stat
 
 	return nil
 }
+
+// GetProcessedByInstanceID retrieves all PROCESSED attachments for an instance
+// ARCH-012: For audit notification aggregation
+func (r *AttachmentRepository) GetProcessedByInstanceID(instanceID int64) ([]*models.Attachment, error) {
+	query := `
+		SELECT id, item_id, instance_id, file_name, url, file_path, file_size, mime_type,
+			download_status, error_message, downloaded_at, processed_at, audit_result, created_at
+		FROM attachments
+		WHERE instance_id = ? AND download_status = ?
+		ORDER BY created_at ASC
+	`
+
+	rows, err := r.db.Query(query, instanceID, models.AttachmentStatusProcessed)
+	if err != nil {
+		r.logger.Error("Failed to get processed attachments by instance ID",
+			zap.Int64("instance_id", instanceID), zap.Error(err))
+		return nil, fmt.Errorf("failed to get processed attachments: %w", err)
+	}
+	defer rows.Close()
+
+	var attachments []*models.Attachment
+	for rows.Next() {
+		var attachment models.Attachment
+		var downloadedAt, processedAt sql.NullTime
+		var url, errorMsg, auditResult sql.NullString
+
+		err := rows.Scan(
+			&attachment.ID,
+			&attachment.ItemID,
+			&attachment.InstanceID,
+			&attachment.FileName,
+			&url,
+			&attachment.FilePath,
+			&attachment.FileSize,
+			&attachment.MimeType,
+			&attachment.DownloadStatus,
+			&errorMsg,
+			&downloadedAt,
+			&processedAt,
+			&auditResult,
+			&attachment.CreatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan attachment: %w", err)
+		}
+
+		if url.Valid {
+			attachment.URL = url.String
+		}
+		if errorMsg.Valid {
+			attachment.ErrorMessage = errorMsg.String
+		}
+		if downloadedAt.Valid {
+			attachment.DownloadedAt = &downloadedAt.Time
+		}
+		if processedAt.Valid {
+			attachment.ProcessedAt = &processedAt.Time
+		}
+		if auditResult.Valid {
+			attachment.AuditResult = auditResult.String
+		}
+
+		attachments = append(attachments, &attachment)
+	}
+
+	return attachments, rows.Err()
+}
+
+// GetUnprocessedCountByInstanceID returns count of attachments not yet fully processed
+// ARCH-012: For checking if all attachments are audited
+func (r *AttachmentRepository) GetUnprocessedCountByInstanceID(instanceID int64) (int, error) {
+	query := `
+		SELECT COUNT(*)
+		FROM attachments
+		WHERE instance_id = ? AND download_status NOT IN (?, ?)
+	`
+
+	var count int
+	err := r.db.QueryRow(query, instanceID, models.AttachmentStatusProcessed, models.AttachmentStatusAuditFailed).Scan(&count)
+	if err != nil {
+		r.logger.Error("Failed to get unprocessed count by instance ID",
+			zap.Int64("instance_id", instanceID), zap.Error(err))
+		return 0, fmt.Errorf("failed to get unprocessed count: %w", err)
+	}
+
+	return count, nil
+}
+
+// GetTotalCountByInstanceID returns total count of attachments for an instance
+// ARCH-012: For checking if all attachments are audited
+func (r *AttachmentRepository) GetTotalCountByInstanceID(instanceID int64) (int, error) {
+	query := `SELECT COUNT(*) FROM attachments WHERE instance_id = ?`
+
+	var count int
+	err := r.db.QueryRow(query, instanceID).Scan(&count)
+	if err != nil {
+		r.logger.Error("Failed to get total count by instance ID",
+			zap.Int64("instance_id", instanceID), zap.Error(err))
+		return 0, fmt.Errorf("failed to get total count: %w", err)
+	}
+
+	return count, nil
+}
