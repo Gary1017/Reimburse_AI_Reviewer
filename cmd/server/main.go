@@ -14,6 +14,7 @@ import (
 	"github.com/garyjia/ai-reimbursement/internal/config"
 	"github.com/garyjia/ai-reimbursement/internal/invoice"
 	"github.com/garyjia/ai-reimbursement/internal/lark"
+	"github.com/garyjia/ai-reimbursement/internal/notification"
 	"github.com/garyjia/ai-reimbursement/internal/repository"
 	"github.com/garyjia/ai-reimbursement/internal/worker"
 	"github.com/garyjia/ai-reimbursement/internal/workflow"
@@ -94,6 +95,7 @@ func main() {
 	itemRepo := repository.NewReimbursementItemRepository(db.DB, logger)
 	attachmentRepo := repository.NewAttachmentRepository(db.DB, logger)
 	invoiceRepo := repository.NewInvoiceRepository(db.DB, logger)
+	notificationRepo := repository.NewNotificationRepository(db.DB, logger) // ARCH-012
 
 	// Initialize Lark client and handlers
 	larkClient := lark.NewClient(lark.Config{
@@ -103,6 +105,7 @@ func main() {
 	}, logger)
 
 	approvalAPI := lark.NewApprovalAPI(larkClient, logger)
+	approvalBotAPI := lark.NewApprovalBotAPI(larkClient, logger) // ARCH-012
 	attachmentHandler := lark.NewAttachmentHandler(logger, cfg.Voucher.AttachmentDir)
 
 	// Initialize workflow engine
@@ -169,6 +172,21 @@ func main() {
 		cfg.Voucher.AttachmentDir,
 		logger,
 	)
+
+	// Initialize audit notification components (ARCH-012)
+	auditAggregator := notification.NewAuditAggregator(logger)
+	auditNotifier := notification.NewAuditNotifier(
+		attachmentRepo,
+		instanceRepo,
+		notificationRepo,
+		approvalAPI,
+		approvalBotAPI,
+		auditAggregator,
+		cfg.Lark.ApprovalCode,
+		logger,
+	)
+	invoiceProcessor.SetAuditNotifier(auditNotifier)
+	logger.Info("AuditNotifier initialized and wired to InvoiceProcessor")
 
 	// Initialize status poller (fallback when webhooks unavailable)
 	statusPoller := worker.NewStatusPoller(

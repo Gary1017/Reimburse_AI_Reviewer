@@ -45,6 +45,12 @@ type InvoiceProcessorStatus struct {
 	LastError       error
 }
 
+// AuditNotifierInterface defines the notifier contract for invoice processor
+// ARCH-012: AI Audit Result Notification
+type AuditNotifierInterface interface {
+	NotifyApproversOnAuditCompleteAsync(ctx context.Context, instanceID int64)
+}
+
 // InvoiceProcessor processes downloaded attachments and performs AI audit
 // ARCH-011-B: Invoice Processing Worker implementation
 type InvoiceProcessor struct {
@@ -60,6 +66,7 @@ type InvoiceProcessor struct {
 	invoiceRepo    InvoiceRepositoryInterface
 	pdfReader      *invoice.PDFReader
 	invoiceAuditor *ai.InvoiceAuditor
+	auditNotifier  AuditNotifierInterface // ARCH-012: For audit notifications
 	logger         *zap.Logger
 
 	// Runtime state
@@ -371,8 +378,18 @@ func (p *InvoiceProcessor) processSingleAttachment(att *models.Attachment) error
 	}
 
 	// Update attachment with audit result
-	return p.attachmentRepo.UpdateProcessingStatus(nil, att.ID,
-		models.AttachmentStatusProcessed, string(auditResultJSON), "")
+	if err := p.attachmentRepo.UpdateProcessingStatus(nil, att.ID,
+		models.AttachmentStatusProcessed, string(auditResultJSON), ""); err != nil {
+		return err
+	}
+
+	// ARCH-012: Trigger audit notification check (non-blocking)
+	// This will send notification if all attachments for the instance are processed
+	if p.auditNotifier != nil {
+		p.auditNotifier.NotifyApproversOnAuditCompleteAsync(p.ctx, att.InstanceID)
+	}
+
+	return nil
 }
 
 // SetPollInterval sets the polling interval (for testing)
@@ -387,6 +404,14 @@ func (p *InvoiceProcessor) SetBatchSize(size int) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.batchSize = size
+}
+
+// SetAuditNotifier sets the audit notifier for ARCH-012
+// This is optional - if not set, no notifications will be sent
+func (p *InvoiceProcessor) SetAuditNotifier(notifier AuditNotifierInterface) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.auditNotifier = notifier
 }
 
 // ProcessNow processes completed attachments immediately (for testing)
