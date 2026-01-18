@@ -143,3 +143,84 @@ func (a *ApprovalAPI) GetUserInfo(ctx context.Context, userID string) (map[strin
 		"name":    "User " + userID,
 	}, nil
 }
+
+// GetApproversForInstance extracts approver information from an instance detail
+// ARCH-012: Get approvers for audit notification
+func (a *ApprovalAPI) GetApproversForInstance(ctx context.Context, instanceID string) ([]ApproverInfo, error) {
+	// Get instance detail first
+	detail, err := a.GetInstanceDetail(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get instance detail: %w", err)
+	}
+
+	if detail == nil {
+		return nil, fmt.Errorf("instance not found: %s", instanceID)
+	}
+
+	var approvers []ApproverInfo
+
+	// Extract approvers from timeline (approval task list)
+	if detail.Timeline != nil {
+		for _, node := range detail.Timeline {
+			if node == nil {
+				continue
+			}
+			// Check if this is an approval node (type APPROVAL or PENDING)
+			// Timeline nodes contain user_id for approvers
+			if node.OpenId != nil && *node.OpenId != "" {
+				approver := ApproverInfo{
+					OpenID: *node.OpenId,
+				}
+				if node.UserId != nil {
+					approver.UserID = *node.UserId
+				}
+				if node.Ext != nil {
+					approver.Name = *node.Ext
+				}
+				approvers = append(approvers, approver)
+			}
+		}
+	}
+
+	// Also check task_list for pending approvers
+	if detail.TaskList != nil {
+		for _, task := range detail.TaskList {
+			if task == nil {
+				continue
+			}
+			if task.OpenId != nil && *task.OpenId != "" {
+				// Check if already added
+				exists := false
+				for _, a := range approvers {
+					if a.OpenID == *task.OpenId {
+						exists = true
+						break
+					}
+				}
+				if !exists {
+					approver := ApproverInfo{
+						OpenID: *task.OpenId,
+					}
+					if task.UserId != nil {
+						approver.UserID = *task.UserId
+					}
+					approvers = append(approvers, approver)
+				}
+			}
+		}
+	}
+
+	a.logger.Debug("Extracted approvers from instance",
+		zap.String("instance_id", instanceID),
+		zap.Int("approver_count", len(approvers)))
+
+	return approvers, nil
+}
+
+// ApproverInfo represents an approver extracted from Lark instance
+type ApproverInfo struct {
+	UserID string `json:"user_id"`
+	OpenID string `json:"open_id"`
+	Name   string `json:"name,omitempty"`
+	Email  string `json:"email,omitempty"`
+}
