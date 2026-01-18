@@ -351,15 +351,47 @@ func (fp *FormParser) extractItemsFromLarkWidgets(widgets []interface{}) []map[s
 }
 
 // mapLarkReimbursementType maps Lark reimbursement type names to our item types
+// Matches the Lark form categories: 差旅费, 住宿费, 交通费, 招待费, 团建费, 通讯费, 其他
 func (fp *FormParser) mapLarkReimbursementType(larkType string) string {
+	// Check for exact matches first (more reliable)
+	switch larkType {
+	case "差旅费":
+		return models.ItemTypeTravel
+	case "住宿费":
+		return models.ItemTypeAccommodation
+	case "交通费":
+		return models.ItemTypeTransportation
+	case "招待费":
+		return models.ItemTypeEntertainment
+	case "团建费":
+		return models.ItemTypeTeamBuilding
+	case "通讯费":
+		return models.ItemTypeCommunication
+	case "其他":
+		return models.ItemTypeOther
+	}
+
+	// Fallback to fuzzy matching for flexibility
 	larkTypeLower := strings.ToLower(larkType)
 
 	// Map common Lark reimbursement types
 	if strings.Contains(larkTypeLower, "住宿") || strings.Contains(larkTypeLower, "accommodation") {
 		return models.ItemTypeAccommodation
 	}
-	if strings.Contains(larkTypeLower, "交通") || strings.Contains(larkTypeLower, "travel") || strings.Contains(larkTypeLower, "差旅") {
+	if strings.Contains(larkTypeLower, "差旅") || strings.Contains(larkTypeLower, "travel") {
 		return models.ItemTypeTravel
+	}
+	if strings.Contains(larkTypeLower, "交通") || strings.Contains(larkTypeLower, "transportation") {
+		return models.ItemTypeTransportation
+	}
+	if strings.Contains(larkTypeLower, "招待") || strings.Contains(larkTypeLower, "entertainment") {
+		return models.ItemTypeEntertainment
+	}
+	if strings.Contains(larkTypeLower, "团建") || strings.Contains(larkTypeLower, "team") {
+		return models.ItemTypeTeamBuilding
+	}
+	if strings.Contains(larkTypeLower, "通讯") || strings.Contains(larkTypeLower, "communication") {
+		return models.ItemTypeCommunication
 	}
 	if strings.Contains(larkTypeLower, "餐饮") || strings.Contains(larkTypeLower, "meal") || strings.Contains(larkTypeLower, "餐费") {
 		return models.ItemTypeMeal

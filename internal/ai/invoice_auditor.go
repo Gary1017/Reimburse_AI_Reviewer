@@ -7,10 +7,17 @@ import (
 	"math"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/garyjia/ai-reimbursement/internal/models"
 	openai "github.com/sashabaranov/go-openai"
 	"go.uber.org/zap"
+)
+
+// Language constants for response language configuration
+const (
+	LangChinese = "zh"
+	LangEnglish = "en"
 )
 
 // InvoiceAuditor performs comprehensive audit of invoice data
@@ -258,6 +265,10 @@ func (a *InvoiceAuditor) checkCategoryMatch(
 		itemsDesc.WriteString(fmt.Sprintf("- %s (规格: %s, 金额: %.2f)\n", item.Name, item.Specification, item.Amount))
 	}
 
+	// Detect language from input data
+	lang := detectLanguage(invoice.SellerName, invoice.InvoiceType, expenseCategory, itemsDesc.String())
+	langInstruction := getLanguageInstruction(lang)
+
 	prompt := fmt.Sprintf(`Analyze if this invoice content matches the claimed expense category.
 
 Claimed Expense Category: %s
@@ -270,17 +281,22 @@ Invoice Details:
 
 Question: Does the invoice content reasonably match the claimed expense category "%s"?
 
+%s
+
 Respond with JSON:
 {
   "category_match": boolean,
   "confidence": float 0.0-1.0,
-  "reasoning": "explanation"
+  "reasoning": "explanation in the same language as the input"
 }`,
 		expenseCategory,
 		invoice.SellerName,
 		invoice.InvoiceType,
 		itemsDesc.String(),
-		expenseCategory)
+		expenseCategory,
+		langInstruction)
+
+	systemPrompt := "You are an expert accountant analyzing expense reimbursements. Determine if invoice content matches the claimed expense category. " + langInstruction
 
 	resp, err := a.client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
 		Model:       a.model,
@@ -289,7 +305,7 @@ Respond with JSON:
 		Messages: []openai.ChatCompletionMessage{
 			{
 				Role:    openai.ChatMessageRoleSystem,
-				Content: "You are an expert accountant analyzing expense reimbursements. Determine if invoice content matches the claimed expense category.",
+				Content: systemPrompt,
 			},
 			{
 				Role:    openai.ChatMessageRoleUser,
@@ -387,6 +403,10 @@ func (a *InvoiceAuditor) checkMarketPrice(
 			item.Name, item.Quantity, item.UnitPrice, item.Amount))
 	}
 
+	// Detect language from input data
+	lang := detectLanguage(invoice.SellerName, itemsDesc.String())
+	langInstruction := getLanguageInstruction(lang)
+
 	prompt := fmt.Sprintf(`Analyze if these prices are reasonable based on typical market prices in China:
 
 Seller: %s
@@ -397,17 +417,22 @@ Total Amount: %.2f
 
 Question: Are these prices reasonable for business expenses in China?
 
+%s
+
 Respond with JSON:
 {
   "is_reasonable": boolean,
   "market_price_min": float (estimated minimum market price for total),
   "market_price_max": float (estimated maximum market price for total),
   "confidence": float 0.0-1.0,
-  "reasoning": "explanation"
+  "reasoning": "explanation in the same language as the input"
 }`,
 		invoice.SellerName,
 		itemsDesc.String(),
-		invoice.TotalAmount)
+		invoice.TotalAmount,
+		langInstruction)
+
+	systemPrompt := "You are a market price analyst for business expenses in China. Estimate if prices are reasonable. " + langInstruction
 
 	resp, err := a.client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
 		Model:       a.model,
@@ -416,7 +441,7 @@ Respond with JSON:
 		Messages: []openai.ChatCompletionMessage{
 			{
 				Role:    openai.ChatMessageRoleSystem,
-				Content: "You are a market price analyst for business expenses in China. Estimate if prices are reasonable.",
+				Content: systemPrompt,
 			},
 			{
 				Role:    openai.ChatMessageRoleUser,
@@ -589,4 +614,36 @@ func (a *InvoiceAuditor) fuzzyMatch(s1, s2 string) bool {
 	clean2 = strings.TrimSpace(clean2)
 
 	return clean1 == clean2 || strings.Contains(clean1, clean2) || strings.Contains(clean2, clean1)
+}
+
+// detectLanguage detects whether the input text is primarily Chinese or English
+// Returns LangChinese if Chinese characters are detected, LangEnglish otherwise
+func detectLanguage(texts ...string) string {
+	var chineseCount, totalCount int
+
+	for _, text := range texts {
+		for _, r := range text {
+			if unicode.IsLetter(r) {
+				totalCount++
+				// Check if the character is in CJK Unified Ideographs range
+				if unicode.Is(unicode.Han, r) {
+					chineseCount++
+				}
+			}
+		}
+	}
+
+	// If more than 20% of letters are Chinese, consider it Chinese
+	if totalCount > 0 && float64(chineseCount)/float64(totalCount) > 0.2 {
+		return LangChinese
+	}
+	return LangEnglish
+}
+
+// getLanguageInstruction returns a language instruction for the GPT prompt
+func getLanguageInstruction(lang string) string {
+	if lang == LangChinese {
+		return "请用中文回复。(Please respond in Chinese.)"
+	}
+	return "Please respond in English."
 }

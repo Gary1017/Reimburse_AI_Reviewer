@@ -62,9 +62,13 @@ const (
 
 // Item type constants
 const (
-	ItemTypeTravel        = "TRAVEL"
-	ItemTypeMeal          = "MEAL"
-	ItemTypeAccommodation = "ACCOMMODATION"
-	ItemTypeEquipment     = "EQUIPMENT"
-	ItemTypeOther         = "OTHER"
+	ItemTypeTravel         = "TRAVEL"         // 差旅费
+	ItemTypeMeal           = "MEAL"           // 餐费
+	ItemTypeAccommodation  = "ACCOMMODATION"  // 住宿费
+	ItemTypeEquipment      = "EQUIPMENT"      // 设备/办公用品
+	ItemTypeTransportation = "TRANSPORTATION" // 交通费
+	ItemTypeEntertainment  = "ENTERTAINMENT"  // 招待费
+	ItemTypeTeamBuilding   = "TEAM_BUILDING"  // 团建费
+	ItemTypeCommunication  = "COMMUNICATION"  // 通讯费
+	ItemTypeOther          = "OTHER"          // 其他
 )

@@ -85,11 +85,17 @@ func (r *InvoiceRepository) Create(tx *sql.Tx, invoice *models.Invoice) error {
 }
 
 // CheckUniqueness checks if an invoice with the same unique ID exists
+// Checks against invoices from active or approved instances (not REJECTED/CANCELLED)
+// This allows resubmission of invoices only from rejected/cancelled applications
 func (r *InvoiceRepository) CheckUniqueness(uniqueID string) (*models.UniquenessCheckResult, error) {
+	// Join with approval_instances to check against active or successful approvals
+	// Only REJECTED and CANCELLED instances allow resubmission of the same invoice
 	query := `
-		SELECT id, instance_id, created_at
-		FROM invoices
-		WHERE unique_id = ?
+		SELECT i.id, i.instance_id, i.created_at
+		FROM invoices i
+		INNER JOIN approval_instances ai ON i.instance_id = ai.id
+		WHERE i.unique_id = ?
+		  AND ai.status NOT IN ('REJECTED', 'CANCELLED')
 		LIMIT 1
 	`
 
@@ -99,7 +105,7 @@ func (r *InvoiceRepository) CheckUniqueness(uniqueID string) (*models.Uniqueness
 	err := r.db.QueryRow(query, uniqueID).Scan(&invoiceID, &instanceID, &createdAt)
 
 	if err == sql.ErrNoRows {
-		// Invoice is unique
+		// Invoice is unique (or only exists in rejected/pending instances)
 		return &models.UniquenessCheckResult{
 			IsUnique: true,
 			Message:  "Invoice is unique",
@@ -111,13 +117,13 @@ func (r *InvoiceRepository) CheckUniqueness(uniqueID string) (*models.Uniqueness
 		return nil, fmt.Errorf("failed to check uniqueness: %w", err)
 	}
 
-	// Invoice already exists
+	// Invoice already exists in an active/approved instance
 	return &models.UniquenessCheckResult{
 		IsUnique:            false,
 		DuplicateInvoiceID:  invoiceID,
 		DuplicateInstanceID: instanceID,
 		FirstSeenAt:         &createdAt,
-		Message:             fmt.Sprintf("Duplicate invoice found (first seen: %s)", createdAt.Format("2006-01-02")),
+		Message:             fmt.Sprintf("Duplicate invoice found in active/approved application (first seen: %s)", createdAt.Format("2006-01-02")),
 	}, nil
 }
 
