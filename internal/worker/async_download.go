@@ -424,12 +424,12 @@ func (w *AsyncDownloadWorker) downloadSingleAttachment(task *DownloadTask) error
 		item = nil
 	}
 
-	// Step 1: Generate safe filename with subdirectory structure
+	// Step 2: Generate safe filename with subdirectory structure
 	// Format: {lark_instance_id}/invoice_{LarkinstanceID}_{claim-amount CNY}.pdf
 	// ARCH-014-B: Instance-scoped file organization
 	safeFileName := w.attachmentHandler.GenerateFileName(task.LarkInstanceID, task.AttachmentID, task.FileName, true, item)
 
-	// Step 2: Validate file path for security (prevent directory traversal)
+	// Step 3: Validate file path for security (prevent directory traversal)
 	if err := w.attachmentHandler.ValidatePath("attachments", safeFileName, true); err != nil {
 		w.logger.Error("Invalid file path",
 			zap.Int64("attachment_id", task.AttachmentID),
@@ -439,7 +439,7 @@ func (w *AsyncDownloadWorker) downloadSingleAttachment(task *DownloadTask) error
 			models.AttachmentStatusFailed, fmt.Sprintf("Path validation failed: %v", err))
 	}
 
-	// Step 3: Download file from Lark Drive API
+	// Step 4: Download file from Lark Drive API
 	// API: GET /open-apis/drive/v1/files/{file_token}/download
 	// Reference: https://go.feishu.cn/s/63soQp6OA0s
 	// Note: URL is now stored in database during webhook processing (ARCH-007-D)
@@ -481,7 +481,7 @@ func (w *AsyncDownloadWorker) downloadSingleAttachment(task *DownloadTask) error
 			models.AttachmentStatusFailed, fmt.Sprintf("Download failed (permanent): %v", err))
 	}
 
-	// Step 4: Save file to disk
+	// Step 5: Save file to disk
 	var filePath string
 	if w.folderManager != nil && w.fileStorage != nil {
 		folderPath := w.folderManager.GetInstanceFolderPath(task.LarkInstanceID)
@@ -510,7 +510,7 @@ func (w *AsyncDownloadWorker) downloadSingleAttachment(task *DownloadTask) error
 		}
 	}
 
-	// Step 5: Update database with success
+	// Step 6: Update database with success
 	// Mark as COMPLETED and store file path and size
 	w.logger.Info("Download completed successfully",
 		zap.Int64("attachment_id", task.AttachmentID),

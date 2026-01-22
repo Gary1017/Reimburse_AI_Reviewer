@@ -653,3 +653,48 @@ func (r *AttachmentRepository) GetTotalCountByInstanceID(instanceID int64) (int,
 
 	return count, nil
 }
+
+// GetReimbursementItem retrieves a reimbursement item by ID
+// ARCH-007: Required by AsyncDownloadWorker for filename generation
+func (r *AttachmentRepository) GetReimbursementItem(itemID int64) (*models.ReimbursementItem, error) {
+	query := `
+		SELECT id, instance_id, item_type, description, amount, currency,
+			receipt_attachment, ai_price_check, ai_policy_check,
+			expense_date, vendor, business_purpose, created_at
+		FROM reimbursement_items
+		WHERE id = ?
+	`
+
+	var item models.ReimbursementItem
+	var expenseDate sql.NullTime
+
+	err := r.db.QueryRow(query, itemID).Scan(
+		&item.ID,
+		&item.InstanceID,
+		&item.ItemType,
+		&item.Description,
+		&item.Amount,
+		&item.Currency,
+		&item.ReceiptAttachment,
+		&item.AIPriceCheck,
+		&item.AIPolicyCheck,
+		&expenseDate,
+		&item.Vendor,
+		&item.BusinessPurpose,
+		&item.CreatedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		r.logger.Error("Failed to get reimbursement item by ID", zap.Int64("id", itemID), zap.Error(err))
+		return nil, fmt.Errorf("failed to get reimbursement item: %w", err)
+	}
+
+	if expenseDate.Valid {
+		item.ExpenseDate = &expenseDate.Time
+	}
+
+	return &item, nil
+}
