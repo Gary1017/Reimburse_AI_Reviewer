@@ -207,7 +207,8 @@ func (h *AttachmentHandler) DownloadAttachmentWithRetry(ctx context.Context, url
 
 // GenerateFileName generates a unique filename for an attachment.
 // If withSubdir is true, it creates a path with the instance ID as a subdirectory.
-// Format (withSubdir=false): {larkInstanceID}_att{attachmentID}_{originalName}
+// Format (withSubdir=false, item=nil): {larkInstanceID}_att{attachmentID}_{originalName}
+// Format (withSubdir=false, item!=nil): invoice_{larkInstanceID}_{amount}_{currency}.{ext}
 // Format (withSubdir=true with item):  {larkInstanceID}/invoice_{larkInstanceID}_{amount}_{currency}.{ext}
 // Format (withSubdir=true without item):  {larkInstanceID}/{originalName}
 func (h *AttachmentHandler) GenerateFileName(larkInstanceID string, attachmentID int64, originalName string, withSubdir bool, item *models.ReimbursementItem) string {
@@ -215,17 +216,21 @@ func (h *AttachmentHandler) GenerateFileName(larkInstanceID string, attachmentID
 	safeOriginalName := filepath.Base(originalName)
 	ext := filepath.Ext(safeOriginalName)
 
-	if withSubdir {
-		if item != nil {
-			// Format: invoice_{LarkinstanceID}_{claim-amount CNY}.pdf
-			return filepath.Join(larkInstanceID, fmt.Sprintf("invoice_%s_%.2f %s%s", larkInstanceID, item.Amount, item.Currency, ext))
+	// Generate invoice filename when item info is available
+	if item != nil {
+		invoiceFileName := fmt.Sprintf("invoice_%s_%.2f %s%s", larkInstanceID, item.Amount, item.Currency, ext)
+		if withSubdir {
+			return filepath.Join(larkInstanceID, invoiceFileName)
 		}
-		// Fallback for cases where item is not available
+		return invoiceFileName
+	}
+
+	// Fallback when item is not available
+	if withSubdir {
 		return filepath.Join(larkInstanceID, safeOriginalName)
 	}
 
-	// This part probably doesn't need the item, but we could add it.
-	// For now, keeping it as is.
+	// Legacy format for backward compatibility
 	return fmt.Sprintf("%s_att%d_%s", larkInstanceID, attachmentID, safeOriginalName)
 }
 
