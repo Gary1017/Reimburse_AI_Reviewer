@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -168,14 +169,36 @@ type AttachmentRepositoryInterface interface {
 	GetPendingAttachments(limit int) ([]*models.Attachment, error)
 	MarkDownloadCompleted(tx *sql.Tx, id int64, filePath string, fileSize int64) error
 	UpdateStatus(tx *sql.Tx, id int64, status, errorMessage string) error
+	GetReimbursementItem(itemID int64) (*models.ReimbursementItem, error)
 }
 
 // AttachmentHandlerInterface defines the handler contract for testing
 type AttachmentHandlerInterface interface {
 	DownloadAttachmentWithRetry(ctx context.Context, url, token string, maxAttempts int) (*models.AttachmentFile, error)
-	SaveFileToStorage(filename string, content []byte) (string, error)
-	ValidatePath(baseDir, filename string) error
-	GenerateFileName(larkInstanceID string, attachmentID int64, originalName string) string
+	SaveFileToStorage(filename string, content []byte, withSubdir bool) (string, error)
+	ValidatePath(baseDir, filename string, allowSubdir bool) error
+	GenerateFileName(larkInstanceID string, attachmentID int64, originalName string, withSubdir bool, item *models.ReimbursementItem) string
+}
+
+// DownloadFormPackagerInterface defines the form packager contract for download worker
+// ARCH-013-D: Form package generation after download
+type DownloadFormPackagerInterface interface {
+	GenerateFormPackageAsync(ctx context.Context, instanceID int64)
+}
+
+// FolderManagerInterface defines folder management operations
+type FolderManagerInterface interface {
+	CreateInstanceFolder(larkInstanceID string) (string, error)
+	GetInstanceFolderPath(larkInstanceID string) string
+	FolderExists(larkInstanceID string) bool
+	DeleteInstanceFolder(larkInstanceID string) error
+	SanitizeFolderName(name string) string
+}
+
+// FileStorageInterface defines file storage operations
+type FileStorageInterface interface {
+	SaveFile(fullPath string, content []byte) error
+	ValidatePath(fullPath string) error
 }
 
 // AsyncDownloadWorker manages background attachment downloads
@@ -190,6 +213,9 @@ type AsyncDownloadWorker struct {
 	attachmentRepo    AttachmentRepositoryInterface
 	attachmentHandler AttachmentHandlerInterface
 	larkClient        interface{}
+	formPackager      DownloadFormPackagerInterface // ARCH-013-D: Form package generation
+	folderManager     FolderManagerInterface
+	fileStorage       FileStorageInterface
 	logger            *zap.Logger
 
 	// Runtime state
@@ -376,14 +402,35 @@ func (w *AsyncDownloadWorker) downloadSingleAttachment(task *DownloadTask) error
 	ctx, cancel := context.WithTimeout(parentCtx, w.downloadTimeout)
 	defer cancel()
 
-	// Step 1: Generate safe filename first
-	// Format: {lark_instance_id}_att{attachment_id}_{original_filename}
-	// Using LarkInstanceID ensures it's easy to link back to the approval
-	// Using AttachmentID ensures uniqueness if one approval has multiple attachments
-	safeFileName := w.attachmentHandler.GenerateFileName(task.LarkInstanceID, task.AttachmentID, task.FileName)
+	// Step 1: Ensure instance folder exists (create on first download)
+	if w.folderManager != nil {
+		folderPath, err := w.folderManager.CreateInstanceFolder(task.LarkInstanceID)
+		if err != nil {
+			w.logger.Error("Failed to create instance folder",
+				zap.String("lark_instance_id", task.LarkInstanceID),
+				zap.Error(err))
+			return w.attachmentRepo.UpdateStatus(nil, task.AttachmentID,
+				models.AttachmentStatusFailed, fmt.Sprintf("Folder creation failed: %v", err))
+		}
+		w.logger.Debug("Instance folder ready", zap.String("folder_path", folderPath))
+	}
+
+	// Fetch the reimbursement item to get the amount for the new filename format
+	item, err := w.attachmentRepo.GetReimbursementItem(task.ItemID)
+	if err != nil {
+		w.logger.Warn("Failed to get reimbursement item, falling back to old filename format",
+			zap.Int64("itemID", task.ItemID),
+			zap.Error(err))
+		item = nil
+	}
+
+	// Step 1: Generate safe filename with subdirectory structure
+	// Format: {lark_instance_id}/invoice_{LarkinstanceID}_{claim-amount CNY}.pdf
+	// ARCH-014-B: Instance-scoped file organization
+	safeFileName := w.attachmentHandler.GenerateFileName(task.LarkInstanceID, task.AttachmentID, task.FileName, true, item)
 
 	// Step 2: Validate file path for security (prevent directory traversal)
-	if err := w.attachmentHandler.ValidatePath("attachments", safeFileName); err != nil {
+	if err := w.attachmentHandler.ValidatePath("attachments", safeFileName, true); err != nil {
 		w.logger.Error("Invalid file path",
 			zap.Int64("attachment_id", task.AttachmentID),
 			zap.String("filename", safeFileName),
@@ -435,14 +482,32 @@ func (w *AsyncDownloadWorker) downloadSingleAttachment(task *DownloadTask) error
 	}
 
 	// Step 4: Save file to disk
-	filePath, err := w.attachmentHandler.SaveFileToStorage(safeFileName, file.Content)
-	if err != nil {
-		w.logger.Error("Failed to save file to storage",
-			zap.Int64("attachment_id", task.AttachmentID),
-			zap.String("filename", safeFileName),
-			zap.Error(err))
-		return w.attachmentRepo.UpdateStatus(nil, task.AttachmentID,
-			models.AttachmentStatusFailed, fmt.Sprintf("Storage error: %v", err))
+	var filePath string
+	if w.folderManager != nil && w.fileStorage != nil {
+		folderPath := w.folderManager.GetInstanceFolderPath(task.LarkInstanceID)
+		fileName := w.attachmentHandler.GenerateFileName(task.LarkInstanceID, task.AttachmentID, task.FileName, false, item)
+		fullPath := filepath.Join(folderPath, fileName)
+
+		if err := w.fileStorage.SaveFile(fullPath, file.Content); err != nil {
+			w.logger.Error("Failed to save file to storage",
+				zap.Int64("attachment_id", task.AttachmentID),
+				zap.String("filename", fullPath),
+				zap.Error(err))
+			return w.attachmentRepo.UpdateStatus(nil, task.AttachmentID,
+				models.AttachmentStatusFailed, fmt.Sprintf("Storage error: %v", err))
+		}
+		filePath = fullPath
+	} else {
+		// Fallback to old behavior for backward compatibility
+		filePath, err = w.attachmentHandler.SaveFileToStorage(safeFileName, file.Content, true)
+		if err != nil {
+			w.logger.Error("Failed to save file to storage",
+				zap.Int64("attachment_id", task.AttachmentID),
+				zap.String("filename", safeFileName),
+				zap.Error(err))
+			return w.attachmentRepo.UpdateStatus(nil, task.AttachmentID,
+				models.AttachmentStatusFailed, fmt.Sprintf("Storage error: %v", err))
+		}
 	}
 
 	// Step 5: Update database with success
@@ -453,7 +518,17 @@ func (w *AsyncDownloadWorker) downloadSingleAttachment(task *DownloadTask) error
 		zap.String("file_path", filePath),
 		zap.Int64("file_size", file.Size))
 
-	return w.attachmentRepo.MarkDownloadCompleted(nil, task.AttachmentID, filePath, file.Size)
+	if err := w.attachmentRepo.MarkDownloadCompleted(nil, task.AttachmentID, filePath, file.Size); err != nil {
+		return err
+	}
+
+	// ARCH-013-D: Trigger form package generation (non-blocking)
+	// This will generate the expense reimbursement form if all attachments are downloaded
+	if w.formPackager != nil {
+		w.formPackager.GenerateFormPackageAsync(ctx, task.InstanceID)
+	}
+
+	return nil
 }
 
 // ============================================================================
@@ -479,6 +554,28 @@ func (w *AsyncDownloadWorker) SetBatchSize(size int) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.batchSize = size
+}
+
+// SetFormPackager sets the form packager for ARCH-013-D
+// This is optional - if not set, no form packages will be generated on download
+func (w *AsyncDownloadWorker) SetFormPackager(packager DownloadFormPackagerInterface) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.formPackager = packager
+}
+
+// SetFolderManager sets the folder manager for ARCH-014-B
+func (w *AsyncDownloadWorker) SetFolderManager(fm FolderManagerInterface) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.folderManager = fm
+}
+
+// SetFileStorage sets the file storage for ARCH-014-B
+func (w *AsyncDownloadWorker) SetFileStorage(fs FileStorageInterface) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.fileStorage = fs
 }
 
 // ProcessNow processes pending attachments immediately (for testing)

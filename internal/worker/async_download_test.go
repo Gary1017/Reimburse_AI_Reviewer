@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -18,6 +19,7 @@ import (
 type MockAttachmentRepository struct {
 	mu                      sync.RWMutex
 	attachments             map[int64]*models.Attachment
+	reimbursementItems      map[int64]*models.ReimbursementItem
 	pendingAttachments      []*models.Attachment
 	getPendingCallCount     int
 	updateStatusCallCount   int
@@ -29,6 +31,7 @@ type MockAttachmentRepository struct {
 func NewMockAttachmentRepository() *MockAttachmentRepository {
 	return &MockAttachmentRepository{
 		attachments:        make(map[int64]*models.Attachment),
+		reimbursementItems: make(map[int64]*models.ReimbursementItem),
 		pendingAttachments: []*models.Attachment{},
 	}
 }
@@ -46,6 +49,16 @@ func (m *MockAttachmentRepository) GetByID(id int64) (*models.Attachment, error)
 	return m.attachments[id], nil
 }
 
+func (m *MockAttachmentRepository) GetReimbursementItem(itemID int64) (*models.ReimbursementItem, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	item, ok := m.reimbursementItems[itemID]
+	if !ok {
+		return nil, fmt.Errorf("item with ID %d not found", itemID)
+	}
+	return item, nil
+}
+
 func (m *MockAttachmentRepository) GetPendingAttachments(limit int) ([]*models.Attachment, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -54,7 +67,7 @@ func (m *MockAttachmentRepository) GetPendingAttachments(limit int) ([]*models.A
 	if m.expectedGetPendingError != nil {
 		return nil, m.expectedGetPendingError
 	}
-	
+
 	// Respect limit
 	if len(m.pendingAttachments) > limit {
 		return m.pendingAttachments[:limit], nil
@@ -94,6 +107,12 @@ func (m *MockAttachmentRepository) AddPendingAttachment(att *models.Attachment) 
 	m.pendingAttachments = append(m.pendingAttachments, att)
 }
 
+func (m *MockAttachmentRepository) AddReimbursementItem(item *models.ReimbursementItem) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.reimbursementItems[item.ID] = item
+}
+
 func (m *MockAttachmentRepository) ClearPending() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -102,13 +121,13 @@ func (m *MockAttachmentRepository) ClearPending() {
 
 // MockAttachmentHandler for testing
 type MockAttachmentHandler struct {
-	mu                             sync.RWMutex
-	downloadAttempts               int
-	shouldFailDownload             bool
-	shouldFailWithTemporaryError   bool
-	shouldFailWithPermanentError   bool
-	downloadedFiles                map[int64]*models.AttachmentFile
-	downloadDelay                  time.Duration
+	mu                           sync.RWMutex
+	downloadAttempts             int
+	shouldFailDownload           bool
+	shouldFailWithTemporaryError bool
+	shouldFailWithPermanentError bool
+	downloadedFiles              map[int64]*models.AttachmentFile
+	downloadDelay                time.Duration
 }
 
 func NewMockAttachmentHandler() *MockAttachmentHandler {
@@ -156,15 +175,22 @@ func (m *MockAttachmentHandler) DownloadAttachmentWithRetry(
 	return m.DownloadAttachment(ctx, url, token)
 }
 
-func (m *MockAttachmentHandler) SaveFileToStorage(filename string, content []byte) (string, error) {
+func (m *MockAttachmentHandler) SaveFileToStorage(filename string, content []byte, withSubdir bool) (string, error) {
 	return fmt.Sprintf("/attachments/%s", filename), nil
 }
 
-func (m *MockAttachmentHandler) ValidatePath(baseDir, filename string) error {
+func (m *MockAttachmentHandler) ValidatePath(baseDir, filename string, allowSubdir bool) error {
 	return nil
 }
 
-func (m *MockAttachmentHandler) GenerateFileName(larkInstanceID string, attachmentID int64, originalName string) string {
+func (m *MockAttachmentHandler) GenerateFileName(larkInstanceID string, attachmentID int64, originalName string, withSubdir bool, item *models.ReimbursementItem) string {
+	if withSubdir {
+		if item != nil {
+			ext := filepath.Ext(originalName)
+			return fmt.Sprintf("%s/invoice_%s_%.2f %s%s", larkInstanceID, larkInstanceID, item.Amount, item.Currency, ext)
+		}
+		return fmt.Sprintf("%s/%s", larkInstanceID, originalName)
+	}
 	return fmt.Sprintf("%s_att%d_%s", larkInstanceID, attachmentID, originalName)
 }
 
@@ -178,6 +204,87 @@ func (m *MockAttachmentHandler) GetDownloadAttempts() int {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.downloadAttempts
+}
+
+// MockFolderManager for testing
+type MockFolderManager struct {
+	mu                       sync.RWMutex
+	createFolderCallCount    int
+	getFolderPathCallCount   int
+	createdFolders           map[string]string
+	expectedCreateError      error
+}
+
+func NewMockFolderManager() *MockFolderManager {
+	return &MockFolderManager{
+		createdFolders: make(map[string]string),
+	}
+}
+
+func (m *MockFolderManager) CreateInstanceFolder(larkInstanceID string) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.createFolderCallCount++
+	if m.expectedCreateError != nil {
+		return "", m.expectedCreateError
+	}
+	folderPath := fmt.Sprintf("/attachments/%s", larkInstanceID)
+	m.createdFolders[larkInstanceID] = folderPath
+	return folderPath, nil
+}
+
+func (m *MockFolderManager) GetInstanceFolderPath(larkInstanceID string) string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.getFolderPathCallCount++
+	return fmt.Sprintf("/attachments/%s", larkInstanceID)
+}
+
+func (m *MockFolderManager) FolderExists(larkInstanceID string) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	_, exists := m.createdFolders[larkInstanceID]
+	return exists
+}
+
+func (m *MockFolderManager) DeleteInstanceFolder(larkInstanceID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.createdFolders, larkInstanceID)
+	return nil
+}
+
+func (m *MockFolderManager) SanitizeFolderName(name string) string {
+	return name
+}
+
+// MockFileStorage for testing
+type MockFileStorage struct {
+	mu            sync.RWMutex
+	savedFiles    map[string][]byte
+	saveCallCount int
+	expectedError error
+}
+
+func NewMockFileStorage() *MockFileStorage {
+	return &MockFileStorage{
+		savedFiles: make(map[string][]byte),
+	}
+}
+
+func (m *MockFileStorage) SaveFile(fullPath string, content []byte) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.saveCallCount++
+	if m.expectedError != nil {
+		return m.expectedError
+	}
+	m.savedFiles[fullPath] = content
+	return nil
+}
+
+func (m *MockFileStorage) ValidatePath(fullPath string) error {
+	return nil
 }
 
 // ============================================================================
@@ -299,7 +406,7 @@ func TestDownloadTask_IsRetryable_WithinLimit(t *testing.T) {
 	assert.True(t, task.IsRetryable(3))
 	// With 1 attempt done, can retry up to 2 attempts: true
 	assert.True(t, task.IsRetryable(2))
-	
+
 	// With 2 attempts done, can retry up to 2 attempts: false (already at limit)
 	task.AttemptCount = 2
 	assert.False(t, task.IsRetryable(2))
@@ -606,6 +713,42 @@ func TestAsyncDownloadWorker_GracefulShutdown(t *testing.T) {
 
 	worker.Stop()
 	assert.False(t, worker.isRunning)
+}
+
+// TEST-014-B-01: AsyncDownloadWorker creates folder before download
+func TestAsyncDownloadWorker_CreatesFolderBeforeDownload(t *testing.T) {
+	logger := zap.NewNop()
+	mockRepo := NewMockAttachmentRepository()
+	mockHandler := NewMockAttachmentHandler()
+	mockFolderMgr := NewMockFolderManager()
+	mockFileStorage := NewMockFileStorage()
+
+	worker := NewAsyncDownloadWorker(
+		mockRepo,
+		mockHandler,
+		nil,
+		logger,
+	)
+	worker.SetFolderManager(mockFolderMgr)
+	worker.SetFileStorage(mockFileStorage)
+
+	att := &models.Attachment{
+		ID:             1,
+		InstanceID:     1,
+		ItemID:         1,
+		LarkInstanceID: "LARK-12345",
+		FileName:       "invoice.pdf",
+		URL:            "https://example.com/file",
+		DownloadStatus: models.AttachmentStatusPending,
+	}
+	mockRepo.AddPendingAttachment(att)
+
+	err := worker.ProcessNow()
+	require.NoError(t, err)
+
+	// Verify folder was created
+	assert.Equal(t, 1, mockFolderMgr.createFolderCallCount)
+	assert.True(t, mockFolderMgr.FolderExists("LARK-12345"))
 }
 
 // ============================================================================
