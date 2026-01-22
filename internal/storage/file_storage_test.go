@@ -80,4 +80,27 @@ func TestLocalFileStorage_ValidatePath(t *testing.T) {
 		err := fs.ValidatePath(traversalPath)
 		assert.Error(t, err)
 	})
+
+	t.Run("rejects path with similar prefix", func(t *testing.T) {
+		// If base is /tmp/test123, this should fail
+		similarPrefixPath := tempDir + "_malicious/file.txt"
+		err := fs.ValidatePath(similarPrefixPath)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "escapes base directory")
+	})
+}
+
+func TestLocalFileStorage_SaveFile_EmptyContent(t *testing.T) {
+	tempDir := t.TempDir()
+	logger, _ := zap.NewDevelopment()
+	fs := NewLocalFileStorage(tempDir, logger)
+
+	t.Run("saves empty file", func(t *testing.T) {
+		fullPath := filepath.Join(tempDir, "empty.txt")
+		err := fs.SaveFile(fullPath, []byte{})
+		require.NoError(t, err)
+
+		info, _ := os.Stat(fullPath)
+		assert.Equal(t, int64(0), info.Size())
+	})
 }

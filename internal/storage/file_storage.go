@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"go.uber.org/zap"
 )
@@ -97,17 +98,9 @@ func (s *LocalFileStorage) ValidatePath(fullPath string) error {
 	}
 
 	// Check path is within base directory
-	if !filepath.HasPrefix(absPath, absBase) {
+	// Proper check: ensure path starts with base + separator or equals base
+	if !strings.HasPrefix(absPath, absBase+string(filepath.Separator)) && absPath != absBase {
 		return fmt.Errorf("path escapes base directory: %s", fullPath)
-	}
-
-	// Check for path traversal attempts
-	if filepath.Clean(fullPath) != fullPath {
-		// Path contains .. or other suspicious elements
-		cleaned := filepath.Clean(fullPath)
-		if cleaned != fullPath && filepath.HasPrefix(fullPath, "..") {
-			return fmt.Errorf("path traversal detected: %s", fullPath)
-		}
 	}
 
 	return nil
