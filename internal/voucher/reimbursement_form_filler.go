@@ -77,7 +77,12 @@ func (f *ReimbursementFormFiller) FillTemplate(ctx context.Context, data *FormDa
 	}
 
 	// Save to output path
-	if err := file.SaveAs(outputPath); err != nil {
+	// Use SaveAs with Options to prevent CJK font errors
+	opts := excelize.Options{
+		// Disable password protection
+		Password: "",
+	}
+	if err := file.SaveAs(outputPath, opts); err != nil {
 		return "", fmt.Errorf("failed to save file: %w", err)
 	}
 

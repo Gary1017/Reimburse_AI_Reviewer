@@ -84,7 +84,22 @@ func main() {
 	infrastructure.InitializeWorkflowEngine(
 		serviceContainer.AttachmentHandler,
 		serviceContainer.ApprovalAPI,
+		serviceContainer.EventProcessor,
 	)
+
+	// Wire voucher generator to workflow engine for automatic generation on approval
+	infrastructure.Engine.SetVoucherGenerator(serviceContainer.VoucherGenerator)
+
+	// Initialize WebSocket client for event subscription
+	if err := infrastructure.InitializeWebSocketClient(
+		services.InfrastructureConfig{
+			LarkAppID:     cfg.Lark.AppID,
+			LarkAppSecret: cfg.Lark.AppSecret,
+		},
+		serviceContainer.EventProcessor,
+	); err != nil {
+		logger.Fatal("Failed to initialize WebSocket client", zap.Error(err))
+	}
 
 	// ========================================================================
 	// STEP 4: Worker Layer (Background Processing)
@@ -99,7 +114,7 @@ func main() {
 		infrastructure.LarkClient,
 		logger,
 	)
-	downloadWorker.SetFormPackager(serviceContainer.FormPackager)
+	downloadWorker.SetFormPackager(serviceContainer.VoucherGenerator) // Uses backward compatibility interface
 	downloadWorker.SetFolderManager(serviceContainer.FolderManager)
 	downloadWorker.SetFileStorage(serviceContainer.FileStorage)
 
@@ -113,7 +128,7 @@ func main() {
 		logger,
 	)
 	invoiceProcessor.SetAuditNotifier(serviceContainer.AuditNotifier)
-	invoiceProcessor.SetFormPackager(serviceContainer.FormPackager)
+	invoiceProcessor.SetFormPackager(serviceContainer.VoucherGenerator) // Uses backward compatibility interface
 
 	statusPoller := worker.NewStatusPoller(
 		infrastructure.Repositories.Instance,
@@ -139,6 +154,9 @@ func main() {
 
 	// Start HTTP server
 	infrastructure.StartHTTPServer()
+
+	// Start WebSocket client for Lark event subscription
+	infrastructure.StartWebSocketClient(ctx)
 
 	// ========================================================================
 	// STEP 6: Graceful Shutdown
@@ -189,7 +207,12 @@ func findConfigFile() string {
 }
 
 // setupHTTPRoutes configures all HTTP endpoints
-func setupHTTPRoutes(router *gin.Engine, downloadWorker *worker.AsyncDownloadWorker, invoiceProcessor *worker.InvoiceProcessor, logger *zap.Logger) {
+func setupHTTPRoutes(
+	router *gin.Engine,
+	downloadWorker *worker.AsyncDownloadWorker,
+	invoiceProcessor *worker.InvoiceProcessor,
+	logger *zap.Logger,
+) {
 	// Middleware to log all incoming requests
 	router.Use(func(c *gin.Context) {
 		logger.Info("Incoming HTTP request",

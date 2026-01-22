@@ -11,6 +11,7 @@ import (
 	"github.com/garyjia/ai-reimbursement/internal/workflow"
 	"github.com/garyjia/ai-reimbursement/pkg/database"
 	"github.com/gin-gonic/gin"
+	larkws "github.com/larksuite/oapi-sdk-go/v3/ws"
 	"go.uber.org/zap"
 )
 
@@ -29,10 +30,12 @@ type Infrastructure struct {
 	Database     *database.DB
 	Repositories *Repositories
 	LarkClient   *lark.Client
+	WSClient     *larkws.Client // WebSocket client for event subscription
 	Engine       *workflow.Engine
 	HTTPServer   *http.Server
 	Router       *gin.Engine
 
+	cfg    InfrastructureConfig
 	logger *zap.Logger
 }
 
@@ -104,6 +107,9 @@ func NewInfrastructure(cfg InfrastructureConfig, logger *zap.Logger) (*Infrastru
 		WriteTimeout: cfg.ServerWriteTimeout,
 	}
 
+	// Store config for later use
+	infra.cfg = cfg
+
 	logger.Info("Infrastructure initialized",
 		zap.String("database", cfg.DatabasePath),
 		zap.String("server_addr", infra.HTTPServer.Addr))
@@ -112,7 +118,12 @@ func NewInfrastructure(cfg InfrastructureConfig, logger *zap.Logger) (*Infrastru
 }
 
 // InitializeWorkflowEngine creates the workflow engine after infrastructure is ready
-func (i *Infrastructure) InitializeWorkflowEngine(attachmentHandler *lark.AttachmentHandler, approvalAPI *lark.ApprovalAPI) {
+// and sets up WebSocket event subscription
+func (i *Infrastructure) InitializeWorkflowEngine(
+	attachmentHandler *lark.AttachmentHandler,
+	approvalAPI *lark.ApprovalAPI,
+	eventProcessor *lark.EventProcessor,
+) {
 	i.Engine = workflow.NewEngine(
 		i.Database,
 		i.Repositories.Instance,
@@ -123,7 +134,30 @@ func (i *Infrastructure) InitializeWorkflowEngine(attachmentHandler *lark.Attach
 		attachmentHandler,
 		i.logger,
 	)
+
+	// Wire event processor to workflow engine
+	if eventProcessor != nil {
+		eventProcessor.SetWorkflowHandler(i.Engine)
+		i.logger.Info("Event processor wired to workflow engine")
+	}
+
 	i.logger.Info("Workflow engine initialized")
+}
+
+// InitializeWebSocketClient creates and configures the WebSocket client for event subscription
+func (i *Infrastructure) InitializeWebSocketClient(cfg InfrastructureConfig, eventProcessor *lark.EventProcessor) error {
+	// Create event dispatcher with approval event handler
+	dispatcher := lark.NewEventDispatcher(eventProcessor, i.logger)
+
+	// Create WebSocket client with event dispatcher
+	i.WSClient = larkws.NewClient(
+		cfg.LarkAppID,
+		cfg.LarkAppSecret,
+		larkws.WithEventHandler(dispatcher),
+	)
+
+	i.logger.Info("WebSocket client initialized for event subscription")
+	return nil
 }
 
 // StartHTTPServer starts the HTTP server in a goroutine
@@ -133,6 +167,22 @@ func (i *Infrastructure) StartHTTPServer() {
 		if err := i.HTTPServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			i.logger.Fatal("HTTP server error", zap.Error(err))
 		}
+	}()
+}
+
+// StartWebSocketClient starts the WebSocket client for event subscription in a goroutine
+func (i *Infrastructure) StartWebSocketClient(ctx context.Context) {
+	if i.WSClient == nil {
+		i.logger.Warn("WebSocket client not initialized, skipping event subscription")
+		return
+	}
+
+	go func() {
+		i.logger.Info("Starting WebSocket client for Lark event subscription")
+		if err := i.WSClient.Start(ctx); err != nil {
+			i.logger.Error("WebSocket client error", zap.Error(err))
+		}
+		i.logger.Info("WebSocket client stopped")
 	}()
 }
 

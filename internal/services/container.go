@@ -25,7 +25,7 @@ type Container struct {
 	SubjectMapper      *voucher.AccountingSubjectMapper
 	FormDataAggregator *voucher.FormDataAggregator
 	FormFiller         *voucher.ReimbursementFormFiller
-	FormPackager       *voucher.FormPackager
+	VoucherGenerator   *voucher.VoucherGenerator
 
 	// Storage Services
 	FolderManager *storage.FolderManager
@@ -35,20 +35,21 @@ type Container struct {
 	ApprovalAPI       *lark.ApprovalAPI
 	ApprovalBotAPI    *lark.ApprovalBotAPI
 	AttachmentHandler *lark.AttachmentHandler
+	EventProcessor    *lark.EventProcessor
 
 	logger *zap.Logger
 }
 
 // ServiceConfig holds configuration for service initialization
 type ServiceConfig struct {
-	OpenAIAPIKey          string
-	OpenAIModel           string
-	CompanyName           string
-	CompanyTaxID          string
-	PriceDeviation        float64
-	AttachmentDir         string
-	FormTemplatePath      string
-	LarkApprovalCode      string
+	OpenAIAPIKey     string
+	OpenAIModel      string
+	CompanyName      string
+	CompanyTaxID     string
+	PriceDeviation   float64
+	AttachmentDir    string
+	FormTemplatePath string
+	LarkApprovalCode string
 }
 
 // NewContainer creates and initializes all services
@@ -92,6 +93,14 @@ func (c *Container) initializeLarkServices(infrastructure *Infrastructure, cfg S
 	c.ApprovalAPI = lark.NewApprovalAPI(infrastructure.LarkClient, logger)
 	c.ApprovalBotAPI = lark.NewApprovalBotAPI(infrastructure.LarkClient, logger)
 	c.AttachmentHandler = lark.NewAttachmentHandler(logger, cfg.AttachmentDir)
+
+	// Event processing (must be initialized after workflow engine)
+	// This will be wired to the engine in Infrastructure.InitializeWorkflowEngine
+	c.EventProcessor = lark.NewEventProcessor(
+		cfg.LarkApprovalCode,
+		nil, // Will be set later by SetWorkflowHandler
+		logger,
+	)
 }
 
 // initializeNotificationServices initializes notification services
@@ -135,7 +144,7 @@ func (c *Container) initializeVoucherServices(infrastructure *Infrastructure, cf
 		c.FormFiller = formFiller
 	}
 
-	c.FormPackager = voucher.NewFormPackager(
+	c.VoucherGenerator = voucher.NewVoucherGenerator(
 		c.FormFiller,
 		c.FormDataAggregator,
 		c.FolderManager,

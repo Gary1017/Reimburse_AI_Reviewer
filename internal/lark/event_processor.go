@@ -45,6 +45,12 @@ func NewEventProcessor(approvalCode string, handler WorkflowHandler, logger *zap
 	}
 }
 
+// SetWorkflowHandler sets the workflow handler (used for late binding)
+func (p *EventProcessor) SetWorkflowHandler(handler WorkflowHandler) {
+	p.handler = handler
+	p.logger.Info("Workflow handler set for event processor")
+}
+
 // HandleCustomizedEvent adapts the SDK event payload for processing.
 func (p *EventProcessor) HandleCustomizedEvent(ctx context.Context, event *larkevent.EventReq) error {
 	return p.ProcessEvent(ctx, event.Body)

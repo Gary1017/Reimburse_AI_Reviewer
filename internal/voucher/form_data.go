@@ -25,20 +25,25 @@ type FormItemData struct {
 	Remarks           string  // From ReimbursementItem.BusinessPurpose
 }
 
-// FormPackageResult represents the output of form package generation
-// ARCH-013-D: Result structure for FormPackager
-type FormPackageResult struct {
-	FolderPath      string   // Full path to instance folder
-	FormFilePath    string   // Full path to generated Excel file
-	AttachmentPaths []string // Full paths to all attachments
-	IncompleteCount int      // Number of attachments not yet downloaded
-	Success         bool     // True if all operations completed
-	Error           error    // Non-nil if any operation failed
+// VoucherResult represents the output of voucher generation
+// ARCH-013-D: Result structure for VoucherGenerator
+type VoucherResult struct {
+	FolderPath       string   // Full path to instance folder
+	VoucherFilePath  string   // Full path to generated Excel voucher file
+	FormFilePath     string   // Deprecated: Use VoucherFilePath (kept for backward compatibility)
+	AttachmentPaths  []string // Full paths to all downloaded invoice attachments
+	IncompleteCount  int      // Number of attachments not yet downloaded
+	Success          bool     // True if all operations completed
+	Error            error    // Non-nil if any operation failed
 }
 
-// PackageOptions customizes form package generation behavior
-type PackageOptions struct {
+// GenerationOptions customizes voucher generation behavior
+type GenerationOptions struct {
 	OverwriteExisting  bool // If true, overwrite existing folder/files
 	WaitForAttachments bool // If true, wait for incomplete downloads
 	AttachmentTimeout  int  // Seconds to wait for attachments (if WaitForAttachments)
 }
+
+// Deprecated aliases for backward compatibility
+type FormPackageResult = VoucherResult
+type PackageOptions = GenerationOptions

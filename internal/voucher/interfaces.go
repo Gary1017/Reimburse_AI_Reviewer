@@ -34,15 +34,24 @@ type AccountingSubjectMapperInterface interface {
 	MapToChineseName(itemType string) string
 }
 
-// FormPackagerInterface defines the contract for form package orchestration
-// ARCH-013-D: Orchestrate form generation and file organization
-type FormPackagerInterface interface {
-	// GenerateFormPackage creates the complete form package for an instance
-	GenerateFormPackage(ctx context.Context, instanceID int64) (*FormPackageResult, error)
+// VoucherGeneratorInterface defines the contract for voucher generation orchestration
+// ARCH-013-D: Orchestrate voucher generation and file organization
+type VoucherGeneratorInterface interface {
+	// GenerateVoucher creates the complete voucher package for an instance
+	GenerateVoucher(ctx context.Context, instanceID int64) (*VoucherResult, error)
 
-	// GenerateFormPackageWithOptions allows customization of generation behavior
-	GenerateFormPackageWithOptions(ctx context.Context, instanceID int64, opts *PackageOptions) (*FormPackageResult, error)
+	// GenerateVoucherWithOptions allows customization of generation behavior
+	GenerateVoucherWithOptions(ctx context.Context, instanceID int64, opts *GenerationOptions) (*VoucherResult, error)
+
+	// IsInstanceFullyProcessed checks if all attachments are ready
+	IsInstanceFullyProcessed(instanceID int64) (bool, error)
+
+	// GenerateVoucherAsync generates the voucher asynchronously
+	GenerateVoucherAsync(ctx context.Context, instanceID int64)
 }
+
+// Deprecated: Use VoucherGeneratorInterface instead
+type FormPackagerInterface = VoucherGeneratorInterface
 
 // FolderManagerInterface defines the contract for folder operations
 // ARCH-014-A: Manage instance-specific folders

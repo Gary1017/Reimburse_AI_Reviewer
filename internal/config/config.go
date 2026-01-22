@@ -42,8 +42,7 @@ type DatabaseConfig struct {
 type LarkConfig struct {
 	AppID        string        `mapstructure:"app_id"`
 	AppSecret    string        `mapstructure:"app_secret"`
-	ApprovalCode string        `mapstructure:"approval_code"` // Changed from verify_token and encrypt_key
-	WebhookPath  string        `mapstructure:"webhook_path"`
+	ApprovalCode string        `mapstructure:"approval_code"`
 	APITimeout   time.Duration `mapstructure:"api_timeout"`
 }
 
@@ -137,7 +136,6 @@ func setDefaults() {
 	viper.SetDefault("database.migrations_dir", "migrations")
 
 	// Lark defaults
-	viper.SetDefault("lark.webhook_path", "/webhook/approval")
 	viper.SetDefault("lark.api_timeout", 30*time.Second)
 
 	// OpenAI defaults

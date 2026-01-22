@@ -57,7 +57,7 @@ make docker-run         # Run container (requires env vars)
 
 - `AsyncDownloadWorker`: Non-blocking Lark attachment downloads (ARCH-007)
 - `InvoiceProcessor`: AI-driven invoice extraction and audit (ARCH-011)
-- `StatusPoller`: Polls Lark API for approval status changes (every 30s)
+- `StatusPoller`: Fallback polling for approval status changes (every 30s, not actively used)
 
 ### Key Data Models (`internal/models/`)
 
@@ -77,6 +77,75 @@ This project uses a TDD-oriented agent workflow defined in `.cursor/agents.yaml`
 
 When implementing new features, reference existing ARCH-XXX IDs in `docs/ARCHITECTURE.md` and phase reports in `docs/DEVELOPMENT/`.
 
+## Lark Event Subscription
+
+**CRITICAL: This project uses WebSocket-based event subscription, NOT HTTP webhooks.**
+
+### Implementation Pattern (CORRECT WAY)
+
+The system subscribes to Lark approval events using the official SDK's WebSocket client:
+
+```go
+import (
+    "github.com/larksuite/oapi-sdk-go/v3/ws"
+    "github.com/larksuite/oapi-sdk-go/v3/event/dispatcher"
+)
+
+// 1. Create event dispatcher with custom event handler
+dispatcher := dispatcher.NewEventDispatcher("", "")  // Empty strings for WebSocket mode
+dispatcher.OnCustomizedEvent("approval_instance", eventProcessor.HandleCustomizedEvent)
+
+// 2. Create WebSocket client
+wsClient := ws.NewClient(
+    appID,
+    appSecret,
+    ws.WithEventHandler(dispatcher),
+)
+
+// 3. Start WebSocket connection
+wsClient.Start(ctx)
+```
+
+### Event Flow
+
+```
+Lark Platform → WebSocket → EventDispatcher → EventProcessor → WorkflowEngine → VoucherGenerator
+```
+
+### Why WebSocket, Not HTTP Webhooks?
+
+1. **No intranet penetration needed** during testing
+2. **Automatic authentication** at connection establishment
+3. **Plaintext event data** (no decryption needed)
+4. **Real-time events** with persistent connection
+5. **Only requires public network access**
+
+### DO NOT
+
+❌ **DO NOT create HTTP webhook endpoints** like `/webhook/event`
+❌ **DO NOT use verification tokens or encrypt keys** (not needed for WebSocket)
+❌ **DO NOT use `dispatcher.Do()` method** (that's for HTTP webhooks)
+❌ **DO NOT read webhook documentation** when implementing event subscription
+
+### Implementation Location
+
+- **WebSocket Client**: `internal/services/infrastructure.go` (`InitializeWebSocketClient`, `StartWebSocketClient`)
+- **Event Dispatcher**: `internal/lark/event_dispatcher.go` (`NewEventDispatcher`)
+- **Event Processor**: `internal/lark/event_processor.go` (`HandleCustomizedEvent`)
+- **Workflow Handler**: `internal/workflow/engine.go` (`HandleInstanceApproved`, etc.)
+
+### Reference
+
+See Python SDK example pattern:
+```python
+event_handler = lark.EventDispatcherHandler.builder("", "") \
+    .register_p1_customized_event("approval_instance", do_message_event) \
+    .build()
+
+cli = lark.ws.Client("APP_ID", "APP_SECRET", event_handler=event_handler)
+cli.start()
+```
+
 ## Configuration
 
 Copy `configs/config.example.yaml` to `configs/config.yaml`. Sensitive values via environment variables:
@@ -91,3 +160,25 @@ Copy `configs/config.example.yaml` to `configs/config.yaml`. Sensitive values vi
 - **Transaction safety**: Use `db.WithTransaction()` for multi-table operations
 - **Status mapping**: `mapLarkStatus()` in engine.go translates Lark statuses to internal states
 - **Confidence scoring**: AI audit returns confidence 0-1; thresholds determine auto-approval vs review
+- **Graceful degradation**: Voucher generation failures don't block the workflow; attachments are still organized
+
+## Known Issues
+
+### CJK Font Error in Excel Generation
+
+**Error:** `syntax error: cannot find builtin CJK font`
+
+**Cause:** The excelize library may fail when saving Excel files with Chinese characters if CJK fonts are not available in the system.
+
+**Workaround:** The system is designed to handle this gracefully:
+1. Form generation is **optional** and non-blocking
+2. If FormFiller initialization fails, the system continues without Excel generation
+3. If SaveAs fails with CJK font error, the error is logged but doesn't crash the workflow
+4. Attachments are still downloaded and organized in instance folders
+
+**Impact:** Users can still access downloaded invoices; they just won't get the auto-generated Excel form. The form can be created manually from the downloaded attachments.
+
+**Future Fix:** Consider:
+- Using a different Excel library that doesn't require system fonts
+- Pre-bundling fonts with the application
+- Generating PDF reports instead of Excel files

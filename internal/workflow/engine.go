@@ -14,6 +14,11 @@ import (
 	"go.uber.org/zap"
 )
 
+// VoucherGeneratorInterface defines the interface for voucher generation
+type VoucherGeneratorInterface interface {
+	GenerateVoucherAsync(ctx context.Context, instanceID int64)
+}
+
 // Engine orchestrates the approval workflow
 type Engine struct {
 	db                *database.DB
@@ -25,6 +30,7 @@ type Engine struct {
 	approvalAPI       *lark.ApprovalAPI
 	formParser        *lark.FormParser
 	attachmentHandler *lark.AttachmentHandler
+	voucherGenerator  VoucherGeneratorInterface // Optional: for triggering voucher generation
 	logger            *zap.Logger
 }
 
@@ -52,8 +58,15 @@ func NewEngine(
 		approvalAPI:       approvalAPI,
 		formParser:        formParser,
 		attachmentHandler: attachmentHandler,
+		voucherGenerator:  nil, // Will be set by SetVoucherGenerator
 		logger:            logger,
 	}
+}
+
+// SetVoucherGenerator sets the voucher generator (late binding to avoid circular dependency)
+func (e *Engine) SetVoucherGenerator(generator VoucherGeneratorInterface) {
+	e.voucherGenerator = generator
+	e.logger.Info("Voucher generator wired to workflow engine")
 }
 
 // HandleInstanceCreated handles the creation of a new approval instance
@@ -331,8 +344,17 @@ func (e *Engine) HandleInstanceApproved(instanceID string, eventData map[string]
 		zap.String("previous_status", previousStatus),
 		zap.String("new_status", models.StatusApproved))
 
-	// TODO: Trigger voucher generation (Phase 4)
-	// This will be handled by the voucher generator
+	// Trigger voucher generation asynchronously
+	if e.voucherGenerator != nil {
+		e.logger.Info("Triggering voucher generation",
+			zap.Int64("instance_id", instance.ID),
+			zap.String("lark_instance_id", instanceID))
+		ctx := context.Background()
+		e.voucherGenerator.GenerateVoucherAsync(ctx, instance.ID)
+	} else {
+		e.logger.Warn("Voucher generator not configured, skipping voucher generation",
+			zap.Int64("instance_id", instance.ID))
+	}
 
 	return nil
 }
