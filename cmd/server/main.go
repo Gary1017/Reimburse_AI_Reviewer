@@ -16,6 +16,8 @@ import (
 	"github.com/garyjia/ai-reimbursement/internal/lark"
 	"github.com/garyjia/ai-reimbursement/internal/notification"
 	"github.com/garyjia/ai-reimbursement/internal/repository"
+	"github.com/garyjia/ai-reimbursement/internal/storage"
+	"github.com/garyjia/ai-reimbursement/internal/voucher"
 	"github.com/garyjia/ai-reimbursement/internal/worker"
 	"github.com/garyjia/ai-reimbursement/internal/workflow"
 	"github.com/garyjia/ai-reimbursement/pkg/database"
@@ -187,6 +189,36 @@ func main() {
 	)
 	invoiceProcessor.SetAuditNotifier(auditNotifier)
 	logger.Info("AuditNotifier initialized and wired to InvoiceProcessor")
+
+	// Initialize form packager components (ARCH-013)
+	subjectMapper := voucher.NewAccountingSubjectMapper()
+	folderManager := storage.NewFolderManager(cfg.Voucher.AttachmentDir, logger)
+	formDataAggregator := voucher.NewFormDataAggregator(
+		instanceRepo,
+		itemRepo,
+		attachmentRepo,
+		subjectMapper,
+		logger,
+	)
+	formFiller, err := voucher.NewReimbursementFormFiller(
+		"templates/报销单模板.xlsx",
+		logger,
+	)
+	if err != nil {
+		logger.Warn("Failed to initialize FormFiller, form generation disabled", zap.Error(err))
+		formFiller = nil
+	}
+	formPackager := voucher.NewFormPackager(
+		formFiller,
+		formDataAggregator,
+		folderManager,
+		attachmentRepo,
+		instanceRepo,
+		logger,
+	)
+	invoiceProcessor.SetFormPackager(formPackager)
+	downloadWorker.SetFormPackager(formPackager)
+	logger.Info("FormPackager initialized and wired to InvoiceProcessor and AsyncDownloadWorker")
 
 	// Initialize status poller (fallback when webhooks unavailable)
 	statusPoller := worker.NewStatusPoller(

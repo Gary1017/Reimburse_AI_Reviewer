@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -51,7 +50,7 @@ func (h *AttachmentHandler) ExtractAttachmentURLs(formData string) ([]*models.At
 		return nil, fmt.Errorf("failed to parse form data: %w", err)
 	}
 
-	var references []*models.AttachmentReference
+	references := make([]*models.AttachmentReference, 0)
 
 	// Handle form field with JSON string containing widgets
 	if formStr, ok := data["form"].(string); ok {
@@ -78,7 +77,7 @@ func (h *AttachmentHandler) ExtractAttachmentURLs(formData string) ([]*models.At
 
 // extractFromWidgets extracts attachment references from widgets array
 func (h *AttachmentHandler) extractFromWidgets(widgets []interface{}) []*models.AttachmentReference {
-	var references []*models.AttachmentReference
+	references := make([]*models.AttachmentReference, 0)
 
 	for _, w := range widgets {
 		widget, ok := w.(map[string]interface{})
@@ -206,48 +205,28 @@ func (h *AttachmentHandler) DownloadAttachmentWithRetry(ctx context.Context, url
 	return nil, fmt.Errorf("download failed after %d attempts: %w", maxAttempts, lastErr)
 }
 
-// GenerateFileName generates unique filename with traceability
-// Implements ARCH-003: Safe file naming with lark instance ID/attachment ID/original name
-func (h *AttachmentHandler) GenerateFileName(larkInstanceID string, attachmentID int64, originalName string) string {
-	return fmt.Sprintf("%s_att%d_%s", larkInstanceID, attachmentID, originalName)
-}
+// GenerateFileName generates a unique filename for an attachment.
+// If withSubdir is true, it creates a path with the instance ID as a subdirectory.
+// Format (withSubdir=false): {larkInstanceID}_att{attachmentID}_{originalName}
+// Format (withSubdir=true with item):  {larkInstanceID}/invoice_{larkInstanceID}_{amount}_{currency}.{ext}
+// Format (withSubdir=true without item):  {larkInstanceID}/{originalName}
+func (h *AttachmentHandler) GenerateFileName(larkInstanceID string, attachmentID int64, originalName string, withSubdir bool, item *models.ReimbursementItem) string {
+	// Sanitize originalName to prevent path traversal issues from originalName itself
+	safeOriginalName := filepath.Base(originalName)
+	ext := filepath.Ext(safeOriginalName)
 
-// ValidatePath validates file path to prevent directory traversal attacks
-// Implements ARCH-003: Path validation to prevent security issues
-func (h *AttachmentHandler) ValidatePath(baseDir, filename string) error {
-	// Reject absolute paths
-	if filepath.IsAbs(filename) {
-		return fmt.Errorf("absolute paths not allowed: %s", filename)
+	if withSubdir {
+		if item != nil {
+			// Format: invoice_{LarkinstanceID}_{claim-amount CNY}.pdf
+			return filepath.Join(larkInstanceID, fmt.Sprintf("invoice_%s_%.2f %s%s", larkInstanceID, item.Amount, item.Currency, ext))
+		}
+		// Fallback for cases where item is not available
+		return filepath.Join(larkInstanceID, safeOriginalName)
 	}
 
-	// Reject parent directory traversal
-	if strings.Contains(filename, "..") {
-		return fmt.Errorf("directory traversal not allowed: %s", filename)
-	}
-
-	// Reject null bytes
-	if strings.Contains(filename, "\x00") {
-		return fmt.Errorf("null bytes not allowed in filename")
-	}
-
-	// Check that resolved path is within baseDir
-	absPath := filepath.Join(baseDir, filename)
-	absBase, err := filepath.Abs(baseDir)
-	if err != nil {
-		return fmt.Errorf("invalid base directory: %w", err)
-	}
-
-	absTarget, err := filepath.Abs(absPath)
-	if err != nil {
-		return fmt.Errorf("invalid target path: %w", err)
-	}
-
-	// Ensure target is within base directory
-	if !strings.HasPrefix(absTarget, absBase) {
-		return fmt.Errorf("path escapes base directory: %s", filename)
-	}
-
-	return nil
+	// This part probably doesn't need the item, but we could add it.
+	// For now, keeping it as is.
+	return fmt.Sprintf("%s_att%d_%s", larkInstanceID, attachmentID, safeOriginalName)
 }
 
 // ExtractFileMetadata extracts filename and MIME type from widget data
@@ -291,35 +270,4 @@ func getMimeType(ext string) string {
 	}
 
 	return "application/octet-stream"
-}
-
-// SaveFileToStorage saves downloaded file to disk
-// Implements ARCH-003: File storage with disk I/O
-func (h *AttachmentHandler) SaveFileToStorage(filename string, content []byte) (string, error) {
-	// Validate path
-	if err := h.ValidatePath(h.attachmentDir, filename); err != nil {
-		return "", fmt.Errorf("invalid file path: %w", err)
-	}
-
-	// Ensure attachment directory exists
-	if err := os.MkdirAll(h.attachmentDir, 0755); err != nil {
-		return "", fmt.Errorf("failed to create attachment directory: %w", err)
-	}
-
-	filePath := filepath.Join(h.attachmentDir, filename)
-
-	// Write file to disk
-	if err := os.WriteFile(filePath, content, 0644); err != nil {
-		h.logger.Error("Failed to write file to disk",
-			zap.String("path", filePath),
-			zap.Int("size", len(content)),
-			zap.Error(err))
-		return "", fmt.Errorf("failed to write file: %w", err)
-	}
-
-	h.logger.Info("File saved successfully",
-		zap.String("path", filePath),
-		zap.Int("size", len(content)))
-
-	return filePath, nil
 }

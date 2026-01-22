@@ -262,8 +262,8 @@ func (fp *FormParser) extractItemsFromLarkWidgets(widgets []interface{}) []map[s
 		name, _ := widget["name"].(string)
 		value := widget["value"]
 
-		// Extract reimbursement type (报销类型) from radio widget
-		if widgetType == "radioV2" && (name == "报销类型" || name == "reimbursement_type") {
+		// Extract reimbursement type (报销类型 or 報銷類型) from radio widget
+		if widgetType == "radioV2" && (name == "报销类型" || name == "報銷類型" || name == "reimbursement_type") {
 			if valStr, ok := value.(string); ok {
 				defaultItemType = fp.mapLarkReimbursementType(valStr)
 			}
@@ -277,7 +277,7 @@ func (fp *FormParser) extractItemsFromLarkWidgets(widgets []interface{}) []map[s
 		}
 	}
 
-	// Second pass: Extract items from fieldList widget (费用明细)
+	// Second pass: Extract items from fieldList widget (费用明细 or 費用明細)
 	for _, w := range widgets {
 		widget, ok := w.(map[string]interface{})
 		if !ok {
@@ -285,7 +285,8 @@ func (fp *FormParser) extractItemsFromLarkWidgets(widgets []interface{}) []map[s
 		}
 
 		widgetType, _ := widget["type"].(string)
-		if widgetType != "fieldList" {
+		name, _ := widget["name"].(string)
+		if widgetType != "fieldList" || (name != "费用明细" && name != "費用明細") {
 			continue
 		}
 
@@ -315,17 +316,17 @@ func (fp *FormParser) extractItemsFromLarkWidgets(widgets []interface{}) []map[s
 				value := cellWidget["value"]
 
 				// Map Lark widget names to our field names
-				if name == "内容" || name == "内容描述" || name == "description" {
+				if name == "内容" || name == "內容" || name == "内容描述" || name == "description" {
 					itemData["description"] = value
 				} else if name == "日期（年-月-日）" || name == "日期" || name == "date" || name == "expense_date" {
 					itemData["expense_date"] = value
-				} else if name == "金额" || name == "amount" {
+				} else if name == "金额" || name == "金額" || name == "amount" {
 					itemData["amount"] = value
 				} else if name == "商户" || name == "vendor" || name == "merchant" {
 					itemData["vendor"] = value
 				} else if name == "用途" || name == "business_purpose" || name == "purpose" {
 					itemData["business_purpose"] = value
-				} else if name == "报销类型" || name == "item_type" || name == "category" {
+				} else if name == "报销类型" || name == "報銷類型" || name == "item_type" || name == "category" {
 					itemData["item_type"] = value
 				} else {
 					// Store other fields as-is
@@ -355,17 +356,17 @@ func (fp *FormParser) extractItemsFromLarkWidgets(widgets []interface{}) []map[s
 func (fp *FormParser) mapLarkReimbursementType(larkType string) string {
 	// Check for exact matches first (more reliable)
 	switch larkType {
-	case "差旅费":
+	case "差旅费", "差旅":
 		return models.ItemTypeTravel
-	case "住宿费":
+	case "住宿费", "住宿":
 		return models.ItemTypeAccommodation
-	case "交通费":
+	case "交通费", "交通":
 		return models.ItemTypeTransportation
-	case "招待费":
+	case "招待费", "招待":
 		return models.ItemTypeEntertainment
-	case "团建费":
+	case "团建费", "团建":
 		return models.ItemTypeTeamBuilding
-	case "通讯费":
+	case "通讯费", "通讯":
 		return models.ItemTypeCommunication
 	case "其他":
 		return models.ItemTypeOther

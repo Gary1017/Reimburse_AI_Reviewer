@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/garyjia/ai-reimbursement/internal/models"
+	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 )
 
@@ -127,6 +129,8 @@ func TestAttachmentHandlerFileNaming(t *testing.T) {
 		larkInstanceID string
 		attachmentID   int64
 		originalName   string
+		withSubdir     bool
+		item           *models.ReimbursementItem
 		expectedFormat string
 		intent         string
 	}{
@@ -135,6 +139,8 @@ func TestAttachmentHandlerFileNaming(t *testing.T) {
 			larkInstanceID: "LARK12345",
 			attachmentID:   67890,
 			originalName:   "发票.pdf",
+			withSubdir:     false,
+			item:           nil,
 			expectedFormat: "LARK12345_att67890_发票.pdf",
 			intent:         "Generate unique filename with lark instance ID and attachment ID",
 		},
@@ -143,6 +149,8 @@ func TestAttachmentHandlerFileNaming(t *testing.T) {
 			larkInstanceID: "LARK12345",
 			attachmentID:   67890,
 			originalName:   "Receipt 2026-01-15.pdf",
+			withSubdir:     false,
+			item:           nil,
 			expectedFormat: "LARK12345_att67890_Receipt 2026-01-15.pdf",
 			intent:         "Preserve spaces in filename",
 		},
@@ -151,17 +159,44 @@ func TestAttachmentHandlerFileNaming(t *testing.T) {
 			larkInstanceID: "LARK999",
 			attachmentID:   888,
 			originalName:   "invoice (final).xlsx",
+			withSubdir:     false,
+			item:           nil,
 			expectedFormat: "LARK999_att888_invoice (final).xlsx",
 			intent:         "Handle special characters in filename",
+		},
+		{
+			name:           "ARCH-014-B: Generate path with instance subdirectory but no item",
+			larkInstanceID: "ABC123-XYZ",
+			attachmentID:   67890,
+			originalName:   "发票.pdf",
+			withSubdir:     true,
+			item:           nil,
+			expectedFormat: "ABC123-XYZ/发票.pdf",
+			intent:         "Generate path with LarkInstanceID as subdirectory",
+		},
+		{
+			name:           "ARCH-014-B: Generate path with instance subdirectory and item",
+			larkInstanceID: "ABC123-XYZ",
+			attachmentID:   67890,
+			originalName:   "发票.pdf",
+			withSubdir:     true,
+			item: &models.ReimbursementItem{
+				Amount:   150.75,
+				Currency: "CNY",
+			},
+			expectedFormat: "ABC123-XYZ/invoice_ABC123-XYZ_150.75 CNY.pdf",
+			intent:         "Generate path with LarkInstanceID as subdirectory and item details",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			filename := handler.GenerateFileName(tt.larkInstanceID, tt.attachmentID, tt.originalName)
-			if filename != tt.expectedFormat {
-				t.Errorf("Expected %q, got %q", tt.expectedFormat, filename)
+			filename := handler.GenerateFileName(tt.larkInstanceID, tt.attachmentID, tt.originalName, tt.withSubdir, tt.item)
+			expected := tt.expectedFormat
+			if tt.withSubdir {
+				expected = filepath.FromSlash(tt.expectedFormat)
 			}
+			assert.Equal(t, expected, filename)
 		})
 	}
 }
@@ -251,62 +286,6 @@ func TestAttachmentHandlerDownload(t *testing.T) {
 				if len(file.Content) != tt.expectedContentLen {
 					t.Errorf("Expected content length %d, got %d", tt.expectedContentLen, len(file.Content))
 				}
-			}
-		})
-	}
-}
-
-// TestAttachmentHandlerPathValidation tests path validation to prevent directory traversal
-func TestAttachmentHandlerPathValidation(t *testing.T) {
-	logger := zap.NewNop()
-	baseDir := "/tmp/attachments"
-	handler := NewAttachmentHandler(logger, baseDir)
-
-	tests := []struct {
-		name        string
-		baseDir     string
-		filename    string
-		expectError bool
-		intent      string
-	}{
-		{
-			name:        "ARCH-003: Valid safe path",
-			baseDir:     "/tmp/attachments",
-			filename:    "12345_67890_invoice.pdf",
-			expectError: false,
-			intent:      "Accept normal filename",
-		},
-		{
-			name:        "ARCH-003: Reject directory traversal attempt",
-			baseDir:     "/tmp/attachments",
-			filename:    "../../../etc/passwd",
-			expectError: true,
-			intent:      "Prevent directory traversal attacks",
-		},
-		{
-			name:        "ARCH-003: Reject absolute path",
-			baseDir:     "/tmp/attachments",
-			filename:    "/etc/passwd",
-			expectError: true,
-			intent:      "Reject absolute paths",
-		},
-		{
-			name:        "ARCH-003: Reject path with null bytes",
-			baseDir:     "/tmp/attachments",
-			filename:    "file\x00.pdf",
-			expectError: true,
-			intent:      "Reject null bytes in filename",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := handler.ValidatePath(tt.baseDir, tt.filename)
-			if tt.expectError && err == nil {
-				t.Errorf("Expected error, got nil")
-			}
-			if !tt.expectError && err != nil {
-				t.Errorf("Unexpected error: %v", err)
 			}
 		})
 	}

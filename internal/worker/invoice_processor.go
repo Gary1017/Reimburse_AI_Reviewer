@@ -51,6 +51,12 @@ type AuditNotifierInterface interface {
 	NotifyApproversOnAuditCompleteAsync(ctx context.Context, instanceID int64)
 }
 
+// FormPackagerInterface defines the form packager contract for invoice processor
+// ARCH-013-D: Form package generation
+type FormPackagerInterface interface {
+	GenerateFormPackageAsync(ctx context.Context, instanceID int64)
+}
+
 // InvoiceProcessor processes downloaded attachments and performs AI audit
 // ARCH-011-B: Invoice Processing Worker implementation
 type InvoiceProcessor struct {
@@ -67,6 +73,7 @@ type InvoiceProcessor struct {
 	pdfReader      *invoice.PDFReader
 	invoiceAuditor *ai.InvoiceAuditor
 	auditNotifier  AuditNotifierInterface // ARCH-012: For audit notifications
+	formPackager   FormPackagerInterface  // ARCH-013-D: For form package generation
 	logger         *zap.Logger
 
 	// Runtime state
@@ -389,6 +396,12 @@ func (p *InvoiceProcessor) processSingleAttachment(att *models.Attachment) error
 		p.auditNotifier.NotifyApproversOnAuditCompleteAsync(p.ctx, att.InstanceID)
 	}
 
+	// ARCH-013-D: Trigger form package generation (non-blocking)
+	// This will generate the expense reimbursement form if all attachments are processed
+	if p.formPackager != nil {
+		p.formPackager.GenerateFormPackageAsync(p.ctx, att.InstanceID)
+	}
+
 	return nil
 }
 
@@ -412,6 +425,14 @@ func (p *InvoiceProcessor) SetAuditNotifier(notifier AuditNotifierInterface) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.auditNotifier = notifier
+}
+
+// SetFormPackager sets the form packager for ARCH-013-D
+// This is optional - if not set, no form packages will be generated
+func (p *InvoiceProcessor) SetFormPackager(packager FormPackagerInterface) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.formPackager = packager
 }
 
 // ProcessNow processes completed attachments immediately (for testing)

@@ -175,14 +175,6 @@ func (m *MockAttachmentHandler) DownloadAttachmentWithRetry(
 	return m.DownloadAttachment(ctx, url, token)
 }
 
-func (m *MockAttachmentHandler) SaveFileToStorage(filename string, content []byte, withSubdir bool) (string, error) {
-	return fmt.Sprintf("/attachments/%s", filename), nil
-}
-
-func (m *MockAttachmentHandler) ValidatePath(baseDir, filename string, allowSubdir bool) error {
-	return nil
-}
-
 func (m *MockAttachmentHandler) GenerateFileName(larkInstanceID string, attachmentID int64, originalName string, withSubdir bool, item *models.ReimbursementItem) string {
 	if withSubdir {
 		if item != nil {

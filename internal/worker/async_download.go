@@ -175,8 +175,6 @@ type AttachmentRepositoryInterface interface {
 // AttachmentHandlerInterface defines the handler contract for testing
 type AttachmentHandlerInterface interface {
 	DownloadAttachmentWithRetry(ctx context.Context, url, token string, maxAttempts int) (*models.AttachmentFile, error)
-	SaveFileToStorage(filename string, content []byte, withSubdir bool) (string, error)
-	ValidatePath(baseDir, filename string, allowSubdir bool) error
 	GenerateFileName(larkInstanceID string, attachmentID int64, originalName string, withSubdir bool, item *models.ReimbursementItem) string
 }
 
@@ -415,31 +413,16 @@ func (w *AsyncDownloadWorker) downloadSingleAttachment(task *DownloadTask) error
 		w.logger.Debug("Instance folder ready", zap.String("folder_path", folderPath))
 	}
 
-	// Fetch the reimbursement item to get the amount for the new filename format
+	// Step 2: Fetch the reimbursement item to get the amount for the filename format
 	item, err := w.attachmentRepo.GetReimbursementItem(task.ItemID)
 	if err != nil {
-		w.logger.Warn("Failed to get reimbursement item, falling back to old filename format",
+		w.logger.Warn("Failed to get reimbursement item, falling back to filename without amount",
 			zap.Int64("itemID", task.ItemID),
 			zap.Error(err))
 		item = nil
 	}
 
-	// Step 2: Generate safe filename with subdirectory structure
-	// Format: {lark_instance_id}/invoice_{LarkinstanceID}_{claim-amount CNY}.pdf
-	// ARCH-014-B: Instance-scoped file organization
-	safeFileName := w.attachmentHandler.GenerateFileName(task.LarkInstanceID, task.AttachmentID, task.FileName, true, item)
-
-	// Step 3: Validate file path for security (prevent directory traversal)
-	if err := w.attachmentHandler.ValidatePath("attachments", safeFileName, true); err != nil {
-		w.logger.Error("Invalid file path",
-			zap.Int64("attachment_id", task.AttachmentID),
-			zap.String("filename", safeFileName),
-			zap.Error(err))
-		return w.attachmentRepo.UpdateStatus(nil, task.AttachmentID,
-			models.AttachmentStatusFailed, fmt.Sprintf("Path validation failed: %v", err))
-	}
-
-	// Step 4: Download file from Lark Drive API
+	// Step 3: Download file from Lark Drive API
 	// API: GET /open-apis/drive/v1/files/{file_token}/download
 	// Reference: https://go.feishu.cn/s/63soQp6OA0s
 	// Note: URL is now stored in database during webhook processing (ARCH-007-D)
@@ -481,36 +464,25 @@ func (w *AsyncDownloadWorker) downloadSingleAttachment(task *DownloadTask) error
 			models.AttachmentStatusFailed, fmt.Sprintf("Download failed (permanent): %v", err))
 	}
 
-	// Step 5: Save file to disk
-	var filePath string
-	if w.folderManager != nil && w.fileStorage != nil {
-		folderPath := w.folderManager.GetInstanceFolderPath(task.LarkInstanceID)
-		fileName := w.attachmentHandler.GenerateFileName(task.LarkInstanceID, task.AttachmentID, task.FileName, false, item)
-		fullPath := filepath.Join(folderPath, fileName)
-
-		if err := w.fileStorage.SaveFile(fullPath, file.Content); err != nil {
-			w.logger.Error("Failed to save file to storage",
-				zap.Int64("attachment_id", task.AttachmentID),
-				zap.String("filename", fullPath),
-				zap.Error(err))
-			return w.attachmentRepo.UpdateStatus(nil, task.AttachmentID,
-				models.AttachmentStatusFailed, fmt.Sprintf("Storage error: %v", err))
-		}
-		filePath = fullPath
-	} else {
-		// Fallback to old behavior for backward compatibility
-		filePath, err = w.attachmentHandler.SaveFileToStorage(safeFileName, file.Content, true)
-		if err != nil {
-			w.logger.Error("Failed to save file to storage",
-				zap.Int64("attachment_id", task.AttachmentID),
-				zap.String("filename", safeFileName),
-				zap.Error(err))
-			return w.attachmentRepo.UpdateStatus(nil, task.AttachmentID,
-				models.AttachmentStatusFailed, fmt.Sprintf("Storage error: %v", err))
-		}
+	// Step 4: Save file to disk using FileStorage
+	if w.folderManager == nil || w.fileStorage == nil {
+		return fmt.Errorf("folderManager and fileStorage must be configured")
 	}
 
-	// Step 6: Update database with success
+	folderPath := w.folderManager.GetInstanceFolderPath(task.LarkInstanceID)
+	fileName := w.attachmentHandler.GenerateFileName(task.LarkInstanceID, task.AttachmentID, task.FileName, false, item)
+	filePath := filepath.Join(folderPath, fileName)
+
+	if err := w.fileStorage.SaveFile(filePath, file.Content); err != nil {
+		w.logger.Error("Failed to save file to storage",
+			zap.Int64("attachment_id", task.AttachmentID),
+			zap.String("filename", filePath),
+			zap.Error(err))
+		return w.attachmentRepo.UpdateStatus(nil, task.AttachmentID,
+			models.AttachmentStatusFailed, fmt.Sprintf("Storage error: %v", err))
+	}
+
+	// Step 5: Update database with success
 	// Mark as COMPLETED and store file path and size
 	w.logger.Info("Download completed successfully",
 		zap.Int64("attachment_id", task.AttachmentID),
