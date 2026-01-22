@@ -314,6 +314,11 @@ func (w *AsyncDownloadWorker) GetStatus() WorkerStatus {
 	}
 }
 
+// Name returns the worker name for identification
+func (w *AsyncDownloadWorker) Name() string {
+	return "AsyncDownloadWorker"
+}
+
 // pollLoop runs the main polling loop in background
 func (w *AsyncDownloadWorker) pollLoop() {
 	ticker := time.NewTicker(w.pollInterval)

@@ -89,6 +89,11 @@ func (p *StatusPoller) Stop() {
 	p.logger.Info("StatusPoller stopped")
 }
 
+// Name returns the worker name for identification
+func (p *StatusPoller) Name() string {
+	return "StatusPoller"
+}
+
 // pollLoop runs the main polling loop
 func (p *StatusPoller) pollLoop() {
 	ticker := time.NewTicker(p.pollInterval)

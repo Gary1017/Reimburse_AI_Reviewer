@@ -141,7 +141,7 @@ func setDefaults() {
 	viper.SetDefault("lark.api_timeout", 30*time.Second)
 
 	// OpenAI defaults
-	viper.SetDefault("openai.model", "gpt-4")
+	viper.SetDefault("openai.model", "gpt-4o") // Vision-capable model for PDF/image processing
 	viper.SetDefault("openai.temperature", 0.3)
 	viper.SetDefault("openai.max_tokens", 1000)
 	viper.SetDefault("openai.timeout", 60*time.Second)

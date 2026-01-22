@@ -40,7 +40,7 @@ make docker-run         # Run container (requires env vars)
 
 1. **Integration Layer** (`internal/lark/`, `internal/ai/`)
    - `lark.Client`: Lark SDK wrapper for approvals and attachments
-   - `lark.EventProcessor`: WebSocket-based event subscription (no webhook URL needed)
+   - `lark.EventProcessor`: Event processing adapter (available for webhook integration)
    - `ai.Auditor`: Orchestrates PolicyValidator and PriceBenchmarker
 
 2. **Business Logic Layer** (`internal/workflow/`, `internal/voucher/`, `internal/invoice/`)
@@ -57,7 +57,7 @@ make docker-run         # Run container (requires env vars)
 
 - `AsyncDownloadWorker`: Non-blocking Lark attachment downloads (ARCH-007)
 - `InvoiceProcessor`: AI-driven invoice extraction and audit (ARCH-011)
-- `StatusPoller`: Fallback polling when WebSocket unavailable
+- `StatusPoller`: Polls Lark API for approval status changes (every 30s)
 
 ### Key Data Models (`internal/models/`)
 

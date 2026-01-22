@@ -82,6 +82,12 @@ func (p *FormPackager) GenerateFormPackageWithOptions(ctx context.Context, insta
 	formFilePath := filepath.Join(folderPath, formFileName)
 
 	// Step 4: Fill template and save
+	if p.filler == nil {
+		p.logger.Warn("FormFiller is nil, skipping form generation",
+			zap.String("lark_instance_id", formData.LarkInstanceID))
+		result.Error = fmt.Errorf("form filler not initialized")
+		return result, result.Error
+	}
 	savedPath, err := p.filler.FillTemplate(ctx, formData, formFilePath)
 	if err != nil {
 		p.logger.Error("Failed to fill form template",
@@ -150,12 +156,23 @@ func (p *FormPackager) IsInstanceFullyProcessed(instanceID int64) (bool, error) 
 		return false, fmt.Errorf("failed to get attachments: %w", err)
 	}
 
+	p.logger.Debug("Checking instance attachment statuses",
+		zap.Int64("instance_id", instanceID),
+		zap.Int("attachment_count", len(attachments)))
+
 	if len(attachments) == 0 {
 		// No attachments - still generate form
+		p.logger.Debug("No attachments found, will generate form",
+			zap.Int64("instance_id", instanceID))
 		return true, nil
 	}
 
 	for _, att := range attachments {
+		p.logger.Debug("Checking attachment status",
+			zap.Int64("instance_id", instanceID),
+			zap.Int64("attachment_id", att.ID),
+			zap.String("status", att.DownloadStatus))
+
 		// Check if attachment is at least downloaded (COMPLETED or beyond)
 		if att.DownloadStatus == models.AttachmentStatusPending ||
 			att.DownloadStatus == models.AttachmentStatusFailed {
@@ -169,6 +186,9 @@ func (p *FormPackager) IsInstanceFullyProcessed(instanceID int64) (bool, error) 
 // GenerateFormPackageAsync generates the form package asynchronously
 // It first checks if all attachments are processed before generating
 func (p *FormPackager) GenerateFormPackageAsync(ctx context.Context, instanceID int64) {
+	p.logger.Info("GenerateFormPackageAsync called",
+		zap.Int64("instance_id", instanceID))
+
 	go func() {
 		// Check if all attachments are processed
 		isReady, err := p.IsInstanceFullyProcessed(instanceID)
@@ -178,6 +198,10 @@ func (p *FormPackager) GenerateFormPackageAsync(ctx context.Context, instanceID 
 				zap.Error(err))
 			return
 		}
+
+		p.logger.Info("Instance readiness check result",
+			zap.Int64("instance_id", instanceID),
+			zap.Bool("is_ready", isReady))
 
 		if !isReady {
 			p.logger.Debug("Instance not fully processed yet, skipping form generation",

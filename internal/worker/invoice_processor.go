@@ -176,6 +176,11 @@ func (p *InvoiceProcessor) GetStatus() InvoiceProcessorStatus {
 	}
 }
 
+// Name returns the worker name for identification
+func (p *InvoiceProcessor) Name() string {
+	return "InvoiceProcessor"
+}
+
 // pollLoop runs the main polling loop
 func (p *InvoiceProcessor) pollLoop() {
 	ticker := time.NewTicker(p.pollInterval)

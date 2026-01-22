@@ -2,6 +2,7 @@ package utils
 
 import (
 	"os"
+	"path/filepath"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -42,6 +43,13 @@ func NewLogger(cfg LoggerConfig) (*zap.Logger, error) {
 	case "stderr":
 		writeSyncer = zapcore.AddSync(os.Stderr)
 	default:
+		// Create directory if it doesn't exist
+		dir := filepath.Dir(cfg.OutputPath)
+		if dir != "." {
+			if err := os.MkdirAll(dir, 0755); err != nil {
+				return nil, err
+			}
+		}
 		file, err := os.OpenFile(cfg.OutputPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
 			return nil, err
@@ -67,6 +75,7 @@ func NewLogger(cfg LoggerConfig) (*zap.Logger, error) {
 }
 
 // NewDevelopmentLogger creates a logger suitable for development
+// Deprecated: Use NewLogger with explicit config instead
 func NewDevelopmentLogger() (*zap.Logger, error) {
 	return NewLogger(LoggerConfig{
 		Level:      "debug",
@@ -76,10 +85,11 @@ func NewDevelopmentLogger() (*zap.Logger, error) {
 }
 
 // NewProductionLogger creates a logger suitable for production
+// Deprecated: Use NewLogger with explicit config instead
 func NewProductionLogger() (*zap.Logger, error) {
 	return NewLogger(LoggerConfig{
 		Level:      "info",
-		OutputPath: "stdout",
+		OutputPath: "logs/server.log",
 		Format:     "json",
 	})
 }
