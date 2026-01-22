@@ -220,6 +220,12 @@ func main() {
 	downloadWorker.SetFormPackager(formPackager)
 	logger.Info("FormPackager initialized and wired to InvoiceProcessor and AsyncDownloadWorker")
 
+	// Wire FolderManager and FileStorage to download worker (ARCH-014-B)
+	fileStorage := storage.NewLocalFileStorage(cfg.Voucher.AttachmentDir, logger)
+	downloadWorker.SetFolderManager(folderManager)
+	downloadWorker.SetFileStorage(fileStorage)
+	logger.Info("FolderManager and FileStorage wired to AsyncDownloadWorker")
+
 	// Initialize status poller (fallback when webhooks unavailable)
 	statusPoller := worker.NewStatusPoller(
 		instanceRepo,
