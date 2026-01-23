@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/xuri/excelize/v2"
 	"go.uber.org/zap"
@@ -13,6 +14,7 @@ import (
 // ARCH-013-A: Excel template filling implementation
 type ReimbursementFormFiller struct {
 	templatePath string
+	fontPath     string
 	logger       *zap.Logger
 }
 
@@ -41,14 +43,22 @@ const (
 )
 
 // NewReimbursementFormFiller creates a new ReimbursementFormFiller
-func NewReimbursementFormFiller(templatePath string, logger *zap.Logger) (*ReimbursementFormFiller, error) {
+func NewReimbursementFormFiller(templatePath, fontPath string, logger *zap.Logger) (*ReimbursementFormFiller, error) {
 	// Verify template exists
 	if _, err := os.Stat(templatePath); os.IsNotExist(err) {
 		return nil, fmt.Errorf("template file not found: %s", templatePath)
 	}
 
+	if fontPath != "" {
+		if _, err := os.Stat(fontPath); os.IsNotExist(err) {
+			logger.Warn("font file not found, CJK characters may not display correctly.", zap.String("path", fontPath))
+			fontPath = "" // Reset font path if not found
+		}
+	}
+
 	return &ReimbursementFormFiller{
 		templatePath: templatePath,
+		fontPath:     fontPath,
 		logger:       logger,
 	}, nil
 }
@@ -65,6 +75,19 @@ func (f *ReimbursementFormFiller) FillTemplate(ctx context.Context, data *FormDa
 		return "", fmt.Errorf("failed to open template: %w", err)
 	}
 	defer file.Close()
+
+	// Set default font if provided, to support CJK characters
+	if f.fontPath != "" {
+		if err := file.SetDefaultFont(f.fontPath); err != nil {
+			f.logger.Warn("Failed to set CJK font for Excel generation",
+				zap.String("font_path", f.fontPath),
+				zap.String("impact", "Chinese characters may not display correctly in Excel"),
+				zap.Error(err))
+		}
+	} else {
+		f.logger.Debug("No font path configured, CJK characters may not display correctly in Excel",
+			zap.String("recommendation", "Set 'voucher.font_path' in config.yaml to enable CJK font support"))
+	}
 
 	// Fill header section
 	if err := f.fillHeaderSection(file, data); err != nil {
@@ -83,6 +106,20 @@ func (f *ReimbursementFormFiller) FillTemplate(ctx context.Context, data *FormDa
 		Password: "",
 	}
 	if err := file.SaveAs(outputPath, opts); err != nil {
+		// Check if this is a CJK font error - if so, log as warning but don't fail
+		// This allows the workflow to continue even if Excel generation fails (graceful degradation)
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "CJK font") || strings.Contains(errMsg, "cannot find builtin") {
+			f.logger.Warn("CJK font error during Excel save - form generation skipped (graceful degradation)",
+				zap.String("font_path", f.fontPath),
+				zap.String("output_path", outputPath),
+				zap.String("impact", "Accountants will receive attachments but without formatted Excel voucher"),
+				zap.String("resolution", "Ensure NotoSansCJKsc-Regular.otf font is available in 'voucher.font_path'"),
+				zap.String("error_message", errMsg),
+				zap.Error(err))
+			// Return empty string to indicate no file was created, but don't fail the workflow
+			return "", nil
+		}
 		return "", fmt.Errorf("failed to save file: %w", err)
 	}
 

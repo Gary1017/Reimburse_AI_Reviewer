@@ -69,6 +69,7 @@ type VoucherConfig struct {
 	CompanyName    string  `mapstructure:"company_name"`
 	CompanyTaxID   string  `mapstructure:"company_tax_id"`
 	PriceDeviation float64 `mapstructure:"price_deviation_threshold"`
+	FontPath       string  `mapstructure:"font_path"`
 }
 
 // LoggerConfig holds logger configuration
@@ -149,6 +150,7 @@ func setDefaults() {
 	viper.SetDefault("voucher.output_dir", "generated_vouchers")
 	viper.SetDefault("voucher.attachment_dir", "attachments")
 	viper.SetDefault("voucher.price_deviation_threshold", 0.3)
+	viper.SetDefault("voucher.font_path", "configs/NotoSansCJKsc-Regular.otf")
 
 	// Logger defaults
 	viper.SetDefault("logger.level", "info")

@@ -109,6 +109,8 @@ func (arh *AbnormalReportHandler) FlagAbnormalItem(
 // Current implementation: Echo to console
 // TODO: Integrate with email component when ready
 func (arh *AbnormalReportHandler) notifyAccountant(ctx context.Context, report *AbnormalReport) error {
+	_ = ctx // Will be used for email sending in future integration
+
 	// Build notification message
 	message := arh.buildNotificationMessage(report)
 

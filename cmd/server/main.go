@@ -74,6 +74,7 @@ func main() {
 		PriceDeviation:   cfg.Voucher.PriceDeviation,
 		AttachmentDir:    cfg.Voucher.AttachmentDir,
 		FormTemplatePath: "templates/报销单模板.xlsx",
+		FontPath:         cfg.Voucher.FontPath,
 		LarkApprovalCode: cfg.Lark.ApprovalCode,
 	}, infrastructure, logger)
 	if err != nil {

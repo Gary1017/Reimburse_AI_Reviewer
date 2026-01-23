@@ -383,7 +383,7 @@ func TestStateMachine_ComplexWorkflow(t *testing.T) {
 	machine := builder.Build(StateCreated)
 
 	steps := []struct {
-		trigger      Trigger
+		trigger       Trigger
 		expectedState State
 	}{
 		{TriggerSubmit, StatePending},

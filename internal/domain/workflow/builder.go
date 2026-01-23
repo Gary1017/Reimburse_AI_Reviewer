@@ -34,9 +34,9 @@ type transition struct {
 
 // stateConfig implements StateConfiguration
 type stateConfig struct {
-	builder       *stateMachineBuilder
-	fromState     State
-	transitions   map[Trigger][]transition
+	builder     *stateMachineBuilder
+	fromState   State
+	transitions map[Trigger][]transition
 }
 
 // stateMachineBuilder implements StateMachineBuilder

@@ -1,6 +1,8 @@
 package services
 
 import (
+	"os"
+
 	"github.com/garyjia/ai-reimbursement/internal/ai"
 	"github.com/garyjia/ai-reimbursement/internal/invoice"
 	"github.com/garyjia/ai-reimbursement/internal/lark"
@@ -49,6 +51,7 @@ type ServiceConfig struct {
 	PriceDeviation   float64
 	AttachmentDir    string
 	FormTemplatePath string
+	FontPath         string
 	LarkApprovalCode string
 }
 
@@ -71,6 +74,9 @@ func NewContainer(
 
 	logger.Info("Service container initialized",
 		zap.Bool("form_generation_enabled", c.FormFiller != nil))
+
+	// Validate CJK font support for Excel generation
+	c.ValidateCJKFontSupport(cfg, logger)
 
 	return c, nil
 }
@@ -136,7 +142,7 @@ func (c *Container) initializeVoucherServices(infrastructure *Infrastructure, cf
 	)
 
 	// FormFiller may fail to load template - this is non-fatal
-	formFiller, err := voucher.NewReimbursementFormFiller(cfg.FormTemplatePath, logger)
+	formFiller, err := voucher.NewReimbursementFormFiller(cfg.FormTemplatePath, cfg.FontPath, logger)
 	if err != nil {
 		logger.Warn("Failed to initialize FormFiller, form generation disabled", zap.Error(err))
 		c.FormFiller = nil
@@ -153,3 +159,28 @@ func (c *Container) initializeVoucherServices(infrastructure *Infrastructure, cf
 		logger,
 	)
 }
+
+// ValidateCJKFontSupport checks if CJK font is available for Excel generation
+// This is a health check that logs warnings if font support is not available
+func (c *Container) ValidateCJKFontSupport(cfg ServiceConfig, logger *zap.Logger) {
+	if cfg.FontPath == "" {
+		logger.Warn("CJK font path not configured",
+			zap.String("recommendation", "Set 'voucher.font_path' in config.yaml for proper Chinese character support in Excel"),
+			zap.String("default_path", "configs/NotoSansCJKsc-Regular.otf"))
+		return
+	}
+
+	if _, err := os.Stat(cfg.FontPath); os.IsNotExist(err) {
+		logger.Warn("CJK font file not found - Excel generation may have formatting issues",
+			zap.String("expected_path", cfg.FontPath),
+			zap.String("impact", "Chinese characters may not display correctly in generated Excel vouchers"),
+			zap.String("resolution", "Ensure font file exists at configured path, or disable Excel generation"),
+			zap.String("graceful_degradation", "System will continue - attachments will still be delivered without formatted Excel"))
+		return
+	}
+
+	logger.Info("CJK font support validated",
+		zap.String("font_path", cfg.FontPath),
+		zap.String("status", "OK - Excel generation will include proper Chinese font support"))
+}
+

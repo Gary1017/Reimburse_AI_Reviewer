@@ -486,16 +486,37 @@ func TestAttachmentIntegrationWithWorkflow(t *testing.T) {
 	// without waiting for completion (async processing)
 
 	// Simulate attachment metadata that would be stored after extraction
+	itemID := int64(123)
+	instanceID := int64(456)
+	fileName := "invoice.pdf"
+	createdAt := now()
+
 	attachment := &models.Attachment{
-		ItemID:         123,
-		InstanceID:     456,
-		FileName:       "invoice.pdf",
+		ItemID:         itemID,
+		InstanceID:     instanceID,
+		FileName:       fileName,
 		FilePath:       "",
 		DownloadStatus: models.AttachmentStatusPending,
-		CreatedAt:      now(),
+		CreatedAt:      createdAt,
 	}
 
-	// Verify initial state
+	// Verify initial state with all fields
+	if attachment.ItemID != itemID {
+		t.Errorf("%s: Expected ItemID to be %d, got %d", intent, itemID, attachment.ItemID)
+	}
+
+	if attachment.InstanceID != instanceID {
+		t.Errorf("%s: Expected InstanceID to be %d, got %d", intent, instanceID, attachment.InstanceID)
+	}
+
+	if attachment.FileName != fileName {
+		t.Errorf("%s: Expected FileName to be %q, got %q", intent, fileName, attachment.FileName)
+	}
+
+	if attachment.CreatedAt != createdAt {
+		t.Errorf("%s: Expected CreatedAt to be set", intent)
+	}
+
 	if attachment.DownloadStatus != models.AttachmentStatusPending {
 		t.Errorf("%s: Expected initial status to be PENDING", intent)
 	}
@@ -514,6 +535,15 @@ func TestAttachmentIntegrationWithWorkflow(t *testing.T) {
 
 	if attachment.FilePath == "" {
 		t.Errorf("%s: Expected file path to be set after download", intent)
+	}
+
+	// Verify metadata persists after state transition
+	if attachment.ItemID != itemID {
+		t.Errorf("%s: Expected ItemID to persist after download, got %d", intent, attachment.ItemID)
+	}
+
+	if attachment.InstanceID != instanceID {
+		t.Errorf("%s: Expected InstanceID to persist after download, got %d", intent, attachment.InstanceID)
 	}
 }
 

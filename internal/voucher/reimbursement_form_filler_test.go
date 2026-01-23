@@ -32,7 +32,7 @@ func TestReimbursementFormFiller_FillTemplate(t *testing.T) {
 		tempDir := t.TempDir()
 		outputPath := filepath.Join(tempDir, "output.xlsx")
 
-		filler, err := NewReimbursementFormFiller(templatePath, logger)
+		filler, err := NewReimbursementFormFiller(templatePath, "", logger)
 		require.NoError(t, err)
 
 		formData := &FormData{
@@ -108,7 +108,7 @@ func TestReimbursementFormFiller_FillTemplate(t *testing.T) {
 		tempDir := t.TempDir()
 		outputPath := filepath.Join(tempDir, "empty_items.xlsx")
 
-		filler, err := NewReimbursementFormFiller(templatePath, logger)
+		filler, err := NewReimbursementFormFiller(templatePath, "", logger)
 		require.NoError(t, err)
 
 		formData := &FormData{
@@ -135,7 +135,7 @@ func TestReimbursementFormFiller_FillTemplate(t *testing.T) {
 		tempDir := t.TempDir()
 		outputPath := filepath.Join(tempDir, "max_items.xlsx")
 
-		filler, err := NewReimbursementFormFiller(templatePath, logger)
+		filler, err := NewReimbursementFormFiller(templatePath, "", logger)
 		require.NoError(t, err)
 
 		// Create 8 items (maximum for template)
@@ -179,7 +179,7 @@ func TestReimbursementFormFiller_FillTemplate(t *testing.T) {
 	})
 
 	t.Run("returns error for non-existent template", func(t *testing.T) {
-		_, err := NewReimbursementFormFiller("/nonexistent/template.xlsx", logger)
+		_, err := NewReimbursementFormFiller("/nonexistent/template.xlsx", "", logger)
 
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "template")
@@ -190,7 +190,7 @@ func TestReimbursementFormFiller_FillTemplate(t *testing.T) {
 			t.Skip("Template file not found, skipping test")
 		}
 
-		filler, err := NewReimbursementFormFiller(templatePath, logger)
+		filler, err := NewReimbursementFormFiller(templatePath, "", logger)
 		require.NoError(t, err)
 
 		formData := &FormData{
@@ -215,7 +215,7 @@ func TestReimbursementFormFiller_ValidateTemplate(t *testing.T) {
 			t.Skip("Template file not found, skipping test")
 		}
 
-		filler, err := NewReimbursementFormFiller(templatePath, logger)
+		filler, err := NewReimbursementFormFiller(templatePath, "", logger)
 		require.NoError(t, err)
 
 		err = filler.ValidateTemplate()
@@ -232,7 +232,7 @@ func TestNewReimbursementFormFiller(t *testing.T) {
 			t.Skip("Template file not found, skipping test")
 		}
 
-		filler, err := NewReimbursementFormFiller(templatePath, logger)
+		filler, err := NewReimbursementFormFiller(templatePath, "", logger)
 
 		assert.NoError(t, err)
 		assert.NotNil(t, filler)
