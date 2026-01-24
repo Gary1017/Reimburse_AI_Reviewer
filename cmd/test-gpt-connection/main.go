@@ -46,7 +46,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Println("=== GPT-4 Connection Test ===\n")
+	fmt.Println("=== GPT-4 Connection Test ===")
 
 	// Diagnostic info
 	fmt.Println("Configuration:")
@@ -72,7 +72,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "ERROR: Failed to create PolicyValidator: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Println("✓ PolicyValidator initialized\n")
+	fmt.Println("✓ PolicyValidator initialized")
 
 	// Test item
 	testItem := &models.ReimbursementItem{
@@ -114,12 +114,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Println("✓ Received response from GPT-4!\n")
+	fmt.Println("✓ Received response from GPT-4!")
 	fmt.Printf("API Response Time: %v\n", duration)
 	fmt.Println()
 
 	// Display results
-	fmt.Println("=== Validation Result ===\n")
+	fmt.Println("=== Validation Result ===")
 	fmt.Printf("Compliant: %v\n", result.Compliant)
 	fmt.Printf("Confidence: %.2f (%.0f%%)\n", result.Confidence, result.Confidence*100)
 	fmt.Printf("Reasoning: %s\n", result.Reasoning)
@@ -134,7 +134,7 @@ func main() {
 	}
 
 	// Show JSON response
-	fmt.Println("\n=== Full Response (JSON) ===\n")
+	fmt.Println("\n=== Full Response (JSON) ===")
 	jsonBytes, _ := json.MarshalIndent(result, "", "  ")
 	fmt.Println(string(jsonBytes))
 
