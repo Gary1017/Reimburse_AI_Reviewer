@@ -795,14 +795,15 @@ func main() {
 
 ### 5.3 Success Criteria
 
-- [ ] main.go contains only configuration loading, container creation, Start, and Close
-- [ ] No business logic in infrastructure layer
-- [ ] All interfaces defined in `application/port/`
-- [ ] State machine is explicit, declarative, and independently testable
-- [ ] Dispatcher handles all event routing through a single entry point
-- [ ] All existing tests pass without modification (or with minimal changes)
-- [ ] No import cycles between layers
-- [ ] Container manages complete lifecycle with proper shutdown ordering
+- [x] main.go contains only configuration loading, container creation, Start, and Close
+- [x] No business logic in infrastructure layer
+- [x] All interfaces defined in `application/port/`
+- [x] State machine is explicit, declarative, and independently testable
+- [x] Dispatcher handles all event routing through a single entry point
+- [x] All existing tests pass without modification (or with minimal changes)
+- [x] No import cycles between layers
+- [x] Container manages complete lifecycle with proper shutdown ordering
+- [ ] All legacy `internal/models/` imports migrated to `internal/domain/entity/`
 
 ---
 
@@ -858,9 +859,172 @@ func main() {
 | ARCH-151 | Update documentation | ARCH-150 | Updated ARCHITECTURE.md, README |
 | ARCH-152 | Integration testing | ARCH-150 | Passing integration tests |
 
+### Phase 7: Legacy Models Migration
+
+Migrate `internal/models/` imports to `internal/domain/entity/` across all remaining packages.
+
+**Note:** These tasks are **independent** and can be executed by **parallel subagents**.
+
+| ID | Task | Files | Dependencies | Deliverables |
+|----|------|-------|--------------|--------------|
+| ARCH-200 | Migrate internal/ai/ to domain/entity | 4 files | None | `auditor.go`, `invoice_auditor.go`, `policy_validator.go`, `price_benchmarker.go` use `entity.*` |
+| ARCH-201 | Migrate internal/invoice/ to domain/entity | 2 files | None | `extractor.go`, `pdf_reader.go` use `entity.*` |
+| ARCH-202 | Migrate internal/lark/ to domain/entity | 3 files | None | `approval_bot_api.go`, `attachment_handler.go`, `form_parser.go` use `entity.*` |
+| ARCH-203 | Migrate internal/voucher/ to domain/entity | 6 files | None | All voucher files use `entity.*` |
+| ARCH-204 | Migrate cmd/test-gpt-connection to domain/entity | 1 file | ARCH-200 | CLI tool uses `entity.*` |
+| ARCH-205 | Migrate infrastructure/external/openai to domain/entity | 1 file | ARCH-200 | `auditor.go` uses `entity.*` |
+| ARCH-210 | Remove internal/models/ package | All | ARCH-200-205 | Package deleted, no imports remain |
+| ARCH-211 | Final verification and cleanup | All | ARCH-210 | All tests pass, no `models.*` references |
+
+#### ARCH-200: Migrate internal/ai/ Package
+
+**Scope:** 4 files (~800 lines)
+- `internal/ai/auditor.go`
+- `internal/ai/invoice_auditor.go`
+- `internal/ai/policy_validator.go`
+- `internal/ai/price_benchmarker.go`
+
+**Migration Steps:**
+1. Replace `"github.com/garyjia/ai-reimbursement/internal/models"` with `"github.com/garyjia/ai-reimbursement/internal/domain/entity"`
+2. Replace all `models.ReimbursementItem` → `entity.ReimbursementItem`
+3. Replace all `models.PolicyValidationResult` → `entity.PolicyValidationResult` (or port type)
+4. Replace all `models.PriceBenchmarkResult` → `entity.PriceBenchmarkResult` (or port type)
+5. Replace all `models.ExtractedInvoiceData` → `entity.ExtractedInvoiceData`
+6. Update any status constants: `models.StatusXxx` → `entity.StatusXxx`
+7. Run `go build ./internal/ai/...` to verify
+8. Run `go test ./internal/ai/...` to verify tests pass
+9. Commit changes
+
+**Estimated Complexity:** Medium (type mappings may need adjustment)
+
+#### ARCH-201: Migrate internal/invoice/ Package
+
+**Scope:** 2 files (~400 lines)
+- `internal/invoice/extractor.go`
+- `internal/invoice/pdf_reader.go`
+
+**Migration Steps:**
+1. Replace import `internal/models` → `internal/domain/entity`
+2. Replace `models.ExtractedInvoiceData` → `entity.ExtractedInvoiceData`
+3. Replace `models.InvoiceItem` → `entity.InvoiceItem`
+4. Verify and run tests
+5. Commit changes
+
+**Estimated Complexity:** Low
+
+#### ARCH-202: Migrate internal/lark/ Package
+
+**Scope:** 3 files (~600 lines)
+- `internal/lark/approval_bot_api.go`
+- `internal/lark/attachment_handler.go`
+- `internal/lark/form_parser.go`
+
+**Migration Steps:**
+1. Replace import `internal/models` → `internal/domain/entity`
+2. Replace `models.ApprovalInstance` → `entity.ApprovalInstance`
+3. Replace `models.ReimbursementItem` → `entity.ReimbursementItem`
+4. Replace `models.Attachment` → `entity.Attachment`
+5. Replace status constants: `models.StatusXxx` → `entity.StatusXxx`
+6. Replace item type constants: `models.ItemTypeXxx` → `entity.ItemTypeXxx`
+7. Verify and run tests
+8. Commit changes
+
+**Estimated Complexity:** Medium (many type references)
+
+#### ARCH-203: Migrate internal/voucher/ Package
+
+**Scope:** 6 files (~1200 lines)
+- `internal/voucher/attachment_handler.go`
+- `internal/voucher/excel_filler.go`
+- `internal/voucher/interfaces.go`
+- `internal/voucher/subject_mapper.go`
+- `internal/voucher/voucher_generator.go`
+- `internal/voucher/reimbursement_form_filler.go`
+
+**Migration Steps:**
+1. Replace import `internal/models` → `internal/domain/entity`
+2. Replace all entity types (Instance, Item, Attachment, Invoice, Voucher)
+3. Replace status constants
+4. Replace item type constants
+5. Update interface definitions in `interfaces.go`
+6. Verify and run tests
+7. Commit changes
+
+**Estimated Complexity:** High (most files, many type references)
+
+#### ARCH-204: Migrate cmd/test-gpt-connection
+
+**Scope:** 1 file (~150 lines)
+- `cmd/test-gpt-connection/main.go`
+
+**Migration Steps:**
+1. Replace import `internal/models` → `internal/domain/entity`
+2. Replace `models.ReimbursementItem` → `entity.ReimbursementItem`
+3. Verify build
+4. Commit changes
+
+**Estimated Complexity:** Low
+**Dependency:** Requires ARCH-200 (uses ai/ package types)
+
+#### ARCH-205: Migrate infrastructure/external/openai
+
+**Scope:** 1 file (~560 lines)
+- `internal/infrastructure/external/openai/auditor.go`
+
+**Migration Steps:**
+1. Replace import `internal/models` → `internal/domain/entity`
+2. Replace `models.PolicyValidationResult` → `entity.PolicyValidationResult`
+3. Replace `models.PriceBenchmarkResult` → `entity.PriceBenchmarkResult`
+4. Replace `models.ExtractedInvoiceData` → `entity.ExtractedInvoiceData`
+5. Verify build
+6. Commit changes
+
+**Estimated Complexity:** Medium
+**Dependency:** Requires ARCH-200 (shares types with ai/ package)
+
 ---
 
-## 7. Target Package Structure
+## 8. Implementation Progress
+
+### Completed Tasks ✅
+
+| Phase | Tasks | Status | Completion Date |
+|-------|-------|--------|-----------------|
+| Phase 1 | ARCH-100, 101, 102 | ✅ Complete | 2026-01-23 |
+| Phase 2 | ARCH-110, 111, 112, 113 | ✅ Complete | 2026-01-23 |
+| Phase 3 | ARCH-120, 121, 122, 123, 124 | ✅ Complete | 2026-01-23 |
+| Phase 4 | ARCH-130, 131, 132 | ✅ Complete | 2026-01-24 |
+| Phase 5 | ARCH-140, 141 | ✅ Complete | 2026-01-24 |
+| Phase 6 | ARCH-150, 151, 152 | ✅ Complete | 2026-01-24 |
+| Phase 7 | ARCH-200 - 211 | 🔄 Pending | - |
+
+### Deprecated Code Removed
+
+The following packages were removed after Phase 6:
+- `internal/services/` (replaced by `internal/container/`)
+- `internal/webhook/` (project uses WebSocket)
+- `internal/worker/` (replaced by `internal/infrastructure/worker/`)
+- `internal/workflow/` (replaced by `internal/application/workflow/`)
+- `internal/repository/` (replaced by `internal/infrastructure/persistence/repository/`)
+- `internal/notification/` (not used)
+- `internal/email/` (not used)
+
+**Total removed:** 27 files, ~7,000 lines of deprecated code
+
+### Remaining Work
+
+**`internal/models/`** package still exists with 16 files importing it:
+- `internal/ai/` (4 files)
+- `internal/invoice/` (2 files)
+- `internal/lark/` (3 files)
+- `internal/voucher/` (6 files)
+- `cmd/test-gpt-connection/` (1 file)
+
+These will be migrated in Phase 7 (ARCH-200 to ARCH-211).
+
+---
+
+## 10. Target Package Structure
 
 ```
 AI_Reimbursement/
