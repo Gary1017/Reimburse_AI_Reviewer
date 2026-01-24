@@ -11,17 +11,10 @@ import (
 	"github.com/garyjia/ai-reimbursement/internal/application/port"
 	"github.com/garyjia/ai-reimbursement/internal/application/service"
 	"github.com/garyjia/ai-reimbursement/internal/application/workflow"
-	"github.com/garyjia/ai-reimbursement/internal/domain/event"
-	infraLark "github.com/garyjia/ai-reimbursement/internal/infrastructure/external/lark"
-	"github.com/garyjia/ai-reimbursement/internal/infrastructure/external/openai"
-	"github.com/garyjia/ai-reimbursement/internal/infrastructure/persistence/repository"
 	"github.com/garyjia/ai-reimbursement/internal/infrastructure/persistence/sqlite"
-	"github.com/garyjia/ai-reimbursement/internal/infrastructure/storage"
 	"github.com/garyjia/ai-reimbursement/internal/infrastructure/worker"
 	"github.com/garyjia/ai-reimbursement/internal/lark"
 	"go.uber.org/zap"
-
-	_ "github.com/mattn/go-sqlite3"
 )
 
 // Container manages all application dependencies and lifecycle.
@@ -321,187 +314,136 @@ func (c *Container) Health() *HealthStatus {
 	return status
 }
 
-// initDatabase initializes the database and all repositories.
+// initDatabase initializes the database and all repositories using providers.
 func (c *Container) initDatabase() error {
-	// Open SQLite database
-	sqlDB, err := sql.Open("sqlite3", c.config.Database.Path+"?_journal_mode=WAL&_busy_timeout=5000")
+	// Use provider to create database bundle
+	dbBundle, err := ProvideDatabase(&c.config.Database, c.logger)
 	if err != nil {
-		return fmt.Errorf("failed to open database: %w", err)
+		return err
 	}
 
-	// Configure connection pool
-	sqlDB.SetMaxOpenConns(c.config.Database.MaxOpenConns)
-	sqlDB.SetMaxIdleConns(c.config.Database.MaxIdleConns)
-	sqlDB.SetConnMaxLifetime(c.config.Database.ConnMaxLifetime)
+	c.sqlDB = dbBundle.SqlDB
+	c.db = dbBundle.TransactionMgr
 
-	// Verify connection
-	if err := sqlDB.Ping(); err != nil {
-		sqlDB.Close()
-		return fmt.Errorf("failed to ping database: %w", err)
+	// Use provider to create repositories
+	repos, err := ProvideRepositories(c.sqlDB, c.logger)
+	if err != nil {
+		c.sqlDB.Close()
+		return err
 	}
 
-	c.sqlDB = sqlDB
-	c.db = sqlite.NewDB(sqlDB, c.logger)
-
-	// Initialize repositories
-	c.repositories = &RepositoryBundle{
-		Instance:     repository.NewInstanceRepository(sqlDB, c.logger),
-		Item:         repository.NewItemRepository(sqlDB, c.logger),
-		Attachment:   repository.NewAttachmentRepository(sqlDB, c.logger),
-		History:      repository.NewHistoryRepository(sqlDB, c.logger),
-		Invoice:      repository.NewInvoiceRepository(sqlDB, c.logger),
-		Voucher:      repository.NewVoucherRepository(sqlDB, c.logger),
-		Notification: repository.NewNotificationRepository(sqlDB, c.logger),
-	}
-
+	c.repositories = repos
 	return nil
 }
 
-// initExternalClients initializes Lark and OpenAI clients.
+// initExternalClients initializes Lark and OpenAI clients using providers.
 func (c *Container) initExternalClients() error {
-	// Initialize Lark client
-	larkCfg := lark.Config{
-		AppID:        c.config.Lark.AppID,
-		AppSecret:    c.config.Lark.AppSecret,
-		ApprovalCode: c.config.Lark.ApprovalCode,
+	// Use provider to create Lark clients bundle
+	larkBundle, err := ProvideLarkClients(&c.config.Lark, &c.config.Storage, c.logger)
+	if err != nil {
+		return err
 	}
-	c.larkClient = lark.NewClient(larkCfg, c.logger)
 
-	// Initialize Lark adapters (port implementations)
-	c.larkAdapter = infraLark.NewClient(c.larkClient, c.logger)
-	c.larkDownloader = infraLark.NewDownloader(c.config.Storage.AttachmentDir, c.logger)
-	c.larkMessenger = infraLark.NewMessenger(c.larkClient, c.logger)
+	c.larkClient = larkBundle.Client
+	c.larkAdapter = larkBundle.Adapter
+	c.larkDownloader = larkBundle.Downloader
+	c.larkMessenger = larkBundle.Messenger
 
-	// Initialize OpenAI auditor
-	c.aiAuditor = openai.NewAuditor(
-		c.config.OpenAI.APIKey,
-		c.config.OpenAI.Model,
-		c.config.OpenAI.Temperature,
-		c.config.OpenAI.Policies,
-		c.config.OpenAI.PriceDeviationThreshold,
-		c.logger,
-	)
+	// Use provider to create AI auditor
+	auditor, err := ProvideAIAuditor(&c.config.OpenAI, c.logger)
+	if err != nil {
+		return err
+	}
+	c.aiAuditor = auditor
 
 	return nil
 }
 
-// initStorage initializes file storage and folder manager.
+// initStorage initializes file storage and folder manager using providers.
 func (c *Container) initStorage() error {
-	c.fileStorage = storage.NewLocalFileStorage(c.config.Storage.AttachmentDir, c.logger)
-	c.folderManager = storage.NewLocalFolderManager(c.config.Storage.AttachmentDir, c.logger)
+	// Use provider to create storage bundle
+	storageBundle, err := ProvideStorage(&c.config.Storage, c.logger)
+	if err != nil {
+		return err
+	}
+
+	c.fileStorage = storageBundle.FileStorage
+	c.folderManager = storageBundle.FolderManager
 	return nil
 }
 
-// initServices initializes all application services.
+// initServices initializes all application services using providers.
 func (c *Container) initServices() error {
-	// Create logger adapter for services
-	serviceLogger := &zapLoggerAdapter{logger: c.logger}
-
-	c.services = &ServiceBundle{
-		Approval: service.NewApprovalService(
-			c.repositories.Instance,
-			c.repositories.Item,
-			c.repositories.History,
-			c.db,
-			serviceLogger,
-		),
-		Audit: service.NewAuditService(
-			c.repositories.Instance,
-			c.repositories.Item,
-			c.repositories.Attachment,
-			c.repositories.Invoice,
-			c.aiAuditor,
-			serviceLogger,
-		),
-		Voucher: service.NewVoucherService(
-			c.repositories.Instance,
-			c.repositories.Item,
-			c.repositories.Attachment,
-			c.repositories.Voucher,
-			c.repositories.Invoice,
-			c.db,
-			serviceLogger,
-		),
-		Notification: service.NewNotificationService(
-			c.repositories.Instance,
-			c.repositories.Notification,
-			c.larkAdapter,
-			c.larkMessenger,
-			c.db,
-			serviceLogger,
-		),
+	// Use provider to create services bundle
+	services, err := ProvideServices(&ServiceDeps{
+		Repos:      c.repositories,
+		TxManager:  c.db,
+		AIAuditor:  c.aiAuditor,
+		LarkClient: c.larkAdapter,
+		Messenger:  c.larkMessenger,
+		Logger:     c.logger,
+	})
+	if err != nil {
+		return err
 	}
 
+	c.services = services
 	return nil
 }
 
-// initDispatcherAndWorkflow initializes the event dispatcher and workflow engine.
+// initDispatcherAndWorkflow initializes the event dispatcher and workflow engine using providers.
 func (c *Container) initDispatcherAndWorkflow() error {
-	// Create dispatcher logger adapter
-	dispatcherLogger := &dispatcherLoggerAdapter{logger: c.logger}
+	// Use provider to create dispatcher
+	disp, err := ProvideDispatcher(c.logger)
+	if err != nil {
+		return err
+	}
+	c.dispatcher = disp
 
-	// Initialize dispatcher
-	c.dispatcher = dispatcher.NewDispatcher(
-		dispatcher.WithLogger(dispatcherLogger),
-	)
-
-	// Initialize workflow engine
-	c.workflow = workflow.NewEngine(
-		c.repositories.Instance,
-		c.repositories.History,
-		c.db,
-		workflow.WithDispatcher(c.dispatcher),
-	)
-
-	// Register workflow engine as event handler for all relevant event types
-	// The workflow engine handles events and triggers state transitions
-	c.dispatcher.SubscribeNamed(event.TypeInstanceCreated, "workflow_engine", c.workflow.HandleEvent)
-	c.dispatcher.SubscribeNamed(event.TypeInstanceApproved, "workflow_engine", c.workflow.HandleEvent)
-	c.dispatcher.SubscribeNamed(event.TypeInstanceRejected, "workflow_engine", c.workflow.HandleEvent)
-	c.dispatcher.SubscribeNamed(event.TypeAuditCompleted, "workflow_engine", c.workflow.HandleEvent)
-	c.dispatcher.SubscribeNamed(event.TypeVoucherGenerated, "workflow_engine", c.workflow.HandleEvent)
+	// Use provider to create workflow engine (also registers event handlers)
+	engine, err := ProvideWorkflowEngine(&WorkflowDeps{
+		Repos:      c.repositories,
+		TxManager:  c.db,
+		Dispatcher: c.dispatcher,
+		Logger:     c.logger,
+	})
+	if err != nil {
+		return err
+	}
+	c.workflow = engine
 
 	return nil
 }
 
-// initWorkers initializes and starts all background workers.
+// initWorkers initializes and starts all background workers using providers.
 func (c *Container) initWorkers() error {
-	// Create worker manager
-	c.workers = worker.NewWorkerManager(c.logger)
-
-	// Create download worker
-	downloadCfg := worker.DownloadWorkerConfig{
-		PollInterval:    c.config.Worker.DownloadPollInterval,
-		BatchSize:       c.config.Worker.DownloadBatchSize,
-		DownloadTimeout: c.config.Worker.DownloadTimeout,
+	// Create storage bundle for workers
+	storageBundle := &StorageBundle{
+		FileStorage:   c.fileStorage,
+		FolderManager: c.folderManager,
 	}
-	downloadWorker := worker.NewDownloadWorker(
-		downloadCfg,
-		c.repositories.Attachment,
-		c.repositories.Item,
-		c.larkDownloader,
-		c.fileStorage,
-		c.folderManager,
-		c.logger,
-	)
-	c.workers.Register(downloadWorker)
 
-	// Create invoice worker
-	invoiceCfg := worker.InvoiceWorkerConfig{
-		PollInterval:   c.config.Worker.InvoicePollInterval,
-		BatchSize:      c.config.Worker.InvoiceBatchSize,
-		ProcessTimeout: c.config.Worker.InvoiceProcessTimeout,
+	// Create lark bundle for workers
+	larkBundle := &LarkBundle{
+		Client:     c.larkClient,
+		Adapter:    c.larkAdapter,
+		Downloader: c.larkDownloader,
+		Messenger:  c.larkMessenger,
 	}
-	invoiceWorker := worker.NewInvoiceWorker(
-		invoiceCfg,
-		c.repositories.Attachment,
-		c.repositories.Item,
-		c.repositories.Invoice,
-		c.fileStorage,
-		c.aiAuditor,
-		c.logger,
-	)
-	c.workers.Register(invoiceWorker)
+
+	// Use provider to create workers
+	workers, err := ProvideWorkers(&WorkerDeps{
+		Repos:         c.repositories,
+		LarkBundle:    larkBundle,
+		StorageBundle: storageBundle,
+		AIAuditor:     c.aiAuditor,
+		WorkerCfg:     &c.config.Worker,
+		Logger:        c.logger,
+	})
+	if err != nil {
+		return err
+	}
+	c.workers = workers
 
 	// Start all workers
 	if err := c.workers.StartAll(c.ctx); err != nil {
