@@ -2,7 +2,7 @@
 
 An enterprise-grade automated reimbursement workflow system that integrates Lark approval processes with AI-powered auditing, transforming structured form data into legally-binding vouchers compliant with Mainland China accounting regulations.
 
-**Status**: Phase 3 Complete (Attachment Handling), Phase 4–5 Planned  
+**Status**: Phase 3 Complete (Attachment Handling), Clean Architecture Refactoring Complete
 **Supported Deployments**: Local development, Docker, AWS ECS Fargate (via Terraform)
 
 ## 🌟 Key Features
@@ -60,11 +60,12 @@ An enterprise-grade automated reimbursement workflow system that integrates Lark
 
 ---
 
-## 📖 Detailed Documentation
+## Documentation
 
-- **[Architecture Design](docs/ARCHITECTURE.md)**: Deep dive into system layers, components, and data flow (with Mermaid diagrams).
+- **[Architecture Design](docs/ARCHITECTURE.md)**: Clean Architecture layers, dependency rules, and extension points.
 - **[Development Plan](docs/DEVELOPMENT_PLAN.md)**: Step-by-step roadmap and links to phase-specific development reports.
 - **[Phase Reports](docs/DEVELOPMENT/)**: Detailed reports for each development phase.
+- **[CLAUDE.md](CLAUDE.md)**: AI assistant guidance for working with this codebase.
 
 ---
 

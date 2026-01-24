@@ -36,35 +36,56 @@ make docker-run         # Run container (requires env vars)
 
 ## Architecture
 
-### Three-Layer Design
+This project follows **Clean Architecture** (Ports & Adapters). See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed diagrams and explanations.
 
-1. **Integration Layer** (`internal/lark/`, `internal/ai/`)
-   - `lark.Client`: Lark SDK wrapper for approvals and attachments
-   - `lark.EventProcessor`: Event processing adapter (available for webhook integration)
-   - `ai.Auditor`: Orchestrates PolicyValidator and PriceBenchmarker
+### Clean Architecture Layers
 
-2. **Business Logic Layer** (`internal/workflow/`, `internal/voucher/`, `internal/invoice/`)
-   - `workflow.Engine`: State machine orchestrating approval lifecycle (CREATED → PENDING → AI_AUDITING → APPROVED/REJECTED → VOUCHER_GENERATING → COMPLETED)
-   - `workflow.StatusTracker`: Status transitions with audit trail
-   - `voucher.Generator`: Excel voucher generation with Chinese number formatting
-   - `invoice.PDFReader`: GPT-4o Vision API for PDF/image invoice extraction
+```
+cmd/server/main.go              # Entry point: config + container lifecycle only
+internal/
+├── domain/                     # DOMAIN LAYER - Pure business logic, no dependencies
+│   ├── entity/                 # ApprovalInstance, Attachment, Invoice, etc.
+│   ├── workflow/               # State machine (CREATED → PENDING → AI_AUDITING → ...)
+│   └── event/                  # Domain events (InstanceCreated, StatusChanged)
+│
+├── application/                # APPLICATION LAYER - Orchestration + interfaces
+│   ├── port/                   # Interfaces: InstanceRepository, LarkClient, AIAuditor
+│   ├── dispatcher/             # Event dispatcher for loose coupling
+│   ├── workflow/               # Workflow engine implementation
+│   └── service/                # ApprovalService, AuditService, VoucherService
+│
+├── infrastructure/             # INFRASTRUCTURE LAYER - Implementations
+│   ├── persistence/            # sqlite/, repository/ (implements port.Repository)
+│   ├── external/               # lark/, openai/ (implements port.External)
+│   ├── storage/                # FileStorage, FolderManager
+│   └── worker/                 # DownloadWorker, InvoiceWorker, WorkerManager
+│
+├── container/                  # DEPENDENCY INJECTION - Assembles everything
+│   ├── container.go            # Start()/Close() lifecycle management
+│   └── providers.go            # Factory functions for all components
+│
+└── interfaces/                 # INTERFACE ADAPTERS - External protocol conversion
+    ├── http/                   # REST API server
+    └── websocket/              # Lark WebSocket event adapter
+```
 
-3. **Persistence Layer** (`internal/repository/`, `pkg/database/`)
-   - Repository pattern for all entities (instances, items, attachments, invoices)
-   - SQLite with WAL mode, ACID transactions via `db.WithTransaction()`
+### Key Architectural Principles
 
-### Background Workers (`internal/worker/`)
+1. **Domain has no dependencies** - Pure Go, testable without mocks
+2. **Application defines ports (interfaces)** - Contracts for external dependencies
+3. **Infrastructure implements ports** - Swappable (SQLite → PostgreSQL, local → S3)
+4. **Container assembles everything** - Ordered initialization, reverse-order teardown
+5. **main.go only manages lifecycle** - `container.Start(ctx)` and `container.Close()`
 
-- `AsyncDownloadWorker`: Non-blocking Lark attachment downloads (ARCH-007)
-- `InvoiceProcessor`: AI-driven invoice extraction and audit (ARCH-011)
-- `StatusPoller`: Fallback polling for approval status changes (every 30s, not actively used)
+### State Machine (`domain/workflow/`)
 
-### Key Data Models (`internal/models/`)
+Approval lifecycle: `CREATED` → `PENDING` → `AI_AUDITING` → `APPROVED/REJECTED` → `VOUCHER_GENERATING` → `COMPLETED`
 
-- `ApprovalInstance`: Main reimbursement record with status and form data
-- `ReimbursementItem`: Individual expense items (TRAVEL, MEAL, ACCOMMODATION, EQUIPMENT)
-- `Attachment`: Downloaded receipts with status tracking (PENDING → DOWNLOADED → PROCESSED)
-- `Invoice`: Extracted invoice data with audit results
+### Background Workers (`infrastructure/worker/`)
+
+- `DownloadWorker`: Non-blocking Lark attachment downloads (ARCH-007)
+- `InvoiceWorker`: AI-driven invoice extraction and audit (ARCH-011)
+- `WorkerManager`: Lifecycle management for all workers
 
 ## Development Workflow (Agents)
 
@@ -129,10 +150,11 @@ Lark Platform → WebSocket → EventDispatcher → EventProcessor → WorkflowE
 
 ### Implementation Location
 
-- **WebSocket Client**: `internal/services/infrastructure.go` (`InitializeWebSocketClient`, `StartWebSocketClient`)
-- **Event Dispatcher**: `internal/lark/event_dispatcher.go` (`NewEventDispatcher`)
+- **WebSocket Client**: `internal/interfaces/websocket/lark_adapter.go`
+- **Event Dispatcher**: `internal/application/dispatcher/dispatcher.go`
 - **Event Processor**: `internal/lark/event_processor.go` (`HandleCustomizedEvent`)
-- **Workflow Handler**: `internal/workflow/engine.go` (`HandleInstanceApproved`, etc.)
+- **Workflow Engine**: `internal/application/workflow/impl.go` (`HandleInstanceApproved`, etc.)
+- **Container Wiring**: `internal/container/container.go`, `internal/container/providers.go`
 
 ### Reference
 
