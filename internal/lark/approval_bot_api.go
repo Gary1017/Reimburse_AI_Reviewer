@@ -8,7 +8,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/garyjia/ai-reimbursement/internal/models"
+	"github.com/garyjia/ai-reimbursement/internal/domain/entity"
 	"go.uber.org/zap"
 )
 
@@ -45,7 +45,7 @@ type imMessageResponse struct {
 
 // SendAuditResultMessage sends an audit result notification to an approver
 // Uses Lark IM API: POST /open-apis/im/v1/messages?receive_id_type=open_id
-func (a *ApprovalBotAPI) SendAuditResultMessage(ctx context.Context, req *models.AuditNotificationRequest) (*models.AuditNotificationResponse, error) {
+func (a *ApprovalBotAPI) SendAuditResultMessage(ctx context.Context, req *entity.AuditNotificationRequest) (*entity.AuditNotificationResponse, error) {
 	if req.OpenID == "" {
 		return nil, fmt.Errorf("open_id is required")
 	}
@@ -118,7 +118,7 @@ func (a *ApprovalBotAPI) SendAuditResultMessage(ctx context.Context, req *models
 			zap.Int("code", msgResp.Code),
 			zap.String("msg", msgResp.Msg),
 			zap.String("response", string(respBody)))
-		return &models.AuditNotificationResponse{
+		return &entity.AuditNotificationResponse{
 			Success:      false,
 			ErrorCode:    msgResp.Code,
 			ErrorMessage: msgResp.Msg,
@@ -129,27 +129,27 @@ func (a *ApprovalBotAPI) SendAuditResultMessage(ctx context.Context, req *models
 		zap.String("instance_code", req.InstanceCode),
 		zap.String("message_id", msgResp.Data.MessageID))
 
-	return &models.AuditNotificationResponse{
+	return &entity.AuditNotificationResponse{
 		Success:   true,
 		MessageID: msgResp.Data.MessageID,
 	}, nil
 }
 
 // buildInteractiveCard builds a Lark interactive card for audit notification
-func (a *ApprovalBotAPI) buildInteractiveCard(req *models.AuditNotificationRequest) map[string]interface{} {
+func (a *ApprovalBotAPI) buildInteractiveCard(req *entity.AuditNotificationRequest) map[string]interface{} {
 	result := req.AuditResult
 
 	// Determine header color based on decision
 	var headerTemplate string
 	var headerTitle string
 	switch result.Decision {
-	case models.AuditDecisionPass:
+	case entity.AuditDecisionPass:
 		headerTemplate = "green"
 		headerTitle = "✅ AI审核通过"
-	case models.AuditDecisionNeedsReview:
+	case entity.AuditDecisionNeedsReview:
 		headerTemplate = "orange"
 		headerTitle = "⚠️ AI审核：需人工复核"
-	case models.AuditDecisionFail:
+	case entity.AuditDecisionFail:
 		headerTemplate = "red"
 		headerTitle = "❌ AI审核不通过"
 	default:

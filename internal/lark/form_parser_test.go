@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/garyjia/ai-reimbursement/internal/models"
+	"github.com/garyjia/ai-reimbursement/internal/domain/entity"
 	"go.uber.org/zap"
 )
 
@@ -134,10 +134,10 @@ func TestFormParserItemTypeInference(t *testing.T) {
 		description  string
 		expectedType string
 	}{
-		{"Flight ticket to Beijing", models.ItemTypeTravel},
-		{"Hotel accommodation 3 nights", models.ItemTypeAccommodation},
-		{"Lunch with client", models.ItemTypeMeal},
-		{"Laptop software license", models.ItemTypeEquipment},
+		{"Flight ticket to Beijing", entity.ItemTypeTravel},
+		{"Hotel accommodation 3 nights", entity.ItemTypeAccommodation},
+		{"Lunch with client", entity.ItemTypeMeal},
+		{"Laptop software license", entity.ItemTypeEquipment},
 	}
 
 	for _, tt := range tests {

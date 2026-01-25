@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/garyjia/ai-reimbursement/internal/models"
+	"github.com/garyjia/ai-reimbursement/internal/domain/entity"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 )
@@ -130,7 +130,7 @@ func TestAttachmentHandlerFileNaming(t *testing.T) {
 		attachmentID   int64
 		originalName   string
 		withSubdir     bool
-		item           *models.ReimbursementItem
+		item           *entity.ReimbursementItem
 		expectedFormat string
 		intent         string
 	}{
@@ -180,7 +180,7 @@ func TestAttachmentHandlerFileNaming(t *testing.T) {
 			attachmentID:   67890,
 			originalName:   "发票.pdf",
 			withSubdir:     true,
-			item: &models.ReimbursementItem{
+			item: &entity.ReimbursementItem{
 				Amount:   150.75,
 				Currency: "CNY",
 			},
@@ -491,12 +491,12 @@ func TestAttachmentIntegrationWithWorkflow(t *testing.T) {
 	fileName := "invoice.pdf"
 	createdAt := now()
 
-	attachment := &models.Attachment{
+	attachment := &entity.Attachment{
 		ItemID:         itemID,
 		InstanceID:     instanceID,
 		FileName:       fileName,
 		FilePath:       "",
-		DownloadStatus: models.AttachmentStatusPending,
+		DownloadStatus: entity.AttachmentStatusPending,
 		CreatedAt:      createdAt,
 	}
 
@@ -517,7 +517,7 @@ func TestAttachmentIntegrationWithWorkflow(t *testing.T) {
 		t.Errorf("%s: Expected CreatedAt to be set", intent)
 	}
 
-	if attachment.DownloadStatus != models.AttachmentStatusPending {
+	if attachment.DownloadStatus != entity.AttachmentStatusPending {
 		t.Errorf("%s: Expected initial status to be PENDING", intent)
 	}
 
@@ -526,10 +526,10 @@ func TestAttachmentIntegrationWithWorkflow(t *testing.T) {
 	}
 
 	// After async download completes
-	attachment.DownloadStatus = models.AttachmentStatusCompleted
+	attachment.DownloadStatus = entity.AttachmentStatusCompleted
 	attachment.FilePath = "/tmp/attachments/456_123_invoice.pdf"
 
-	if attachment.DownloadStatus != models.AttachmentStatusCompleted {
+	if attachment.DownloadStatus != entity.AttachmentStatusCompleted {
 		t.Errorf("%s: Expected status to be COMPLETED after download", intent)
 	}
 
@@ -589,9 +589,9 @@ func TestAttachmentStatusTransitions(t *testing.T) {
 	const intent = "ARCH-004: Attachment download status must track PENDING -> COMPLETED/FAILED"
 
 	validTransitions := map[string][]string{
-		models.AttachmentStatusPending:   {models.AttachmentStatusCompleted, models.AttachmentStatusFailed},
-		models.AttachmentStatusCompleted: {},                               // Terminal state
-		models.AttachmentStatusFailed:    {models.AttachmentStatusPending}, // Allow retry
+		entity.AttachmentStatusPending:   {entity.AttachmentStatusCompleted, entity.AttachmentStatusFailed},
+		entity.AttachmentStatusCompleted: {},                               // Terminal state
+		entity.AttachmentStatusFailed:    {entity.AttachmentStatusPending}, // Allow retry
 	}
 
 	// Test valid transitions
@@ -604,19 +604,19 @@ func TestAttachmentStatusTransitions(t *testing.T) {
 	}
 
 	// Test invalid transitions
-	if isValidTransition(models.AttachmentStatusCompleted, models.AttachmentStatusPending) {
+	if isValidTransition(entity.AttachmentStatusCompleted, entity.AttachmentStatusPending) {
 		t.Errorf("%s: Should not allow transition from COMPLETED back to PENDING", intent)
 	}
 }
 
 func isValidTransition(from, to string) bool {
 	validTransitions := map[string]map[string]bool{
-		models.AttachmentStatusPending: {
-			models.AttachmentStatusCompleted: true,
-			models.AttachmentStatusFailed:    true,
+		entity.AttachmentStatusPending: {
+			entity.AttachmentStatusCompleted: true,
+			entity.AttachmentStatusFailed:    true,
 		},
-		models.AttachmentStatusFailed: {
-			models.AttachmentStatusPending: true, // Retry
+		entity.AttachmentStatusFailed: {
+			entity.AttachmentStatusPending: true, // Retry
 		},
 	}
 

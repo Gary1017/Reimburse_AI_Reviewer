@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/garyjia/ai-reimbursement/internal/models"
+	"github.com/garyjia/ai-reimbursement/internal/domain/entity"
 	"go.uber.org/zap"
 )
 
@@ -39,7 +39,7 @@ func NewAttachmentHandler(logger *zap.Logger, attachmentDir string) *AttachmentH
 
 // ExtractAttachmentURLs extracts attachment URLs from Lark form data
 // Implements ARCH-001: Extract attachment URLs from attachmentV2 widgets
-func (h *AttachmentHandler) ExtractAttachmentURLs(formData string) ([]*models.AttachmentReference, error) {
+func (h *AttachmentHandler) ExtractAttachmentURLs(formData string) ([]*entity.AttachmentReference, error) {
 	if formData == "" {
 		return nil, fmt.Errorf("empty form data provided")
 	}
@@ -50,7 +50,7 @@ func (h *AttachmentHandler) ExtractAttachmentURLs(formData string) ([]*models.At
 		return nil, fmt.Errorf("failed to parse form data: %w", err)
 	}
 
-	references := make([]*models.AttachmentReference, 0)
+	references := make([]*entity.AttachmentReference, 0)
 
 	// Handle form field with JSON string containing widgets
 	if formStr, ok := data["form"].(string); ok {
@@ -76,8 +76,8 @@ func (h *AttachmentHandler) ExtractAttachmentURLs(formData string) ([]*models.At
 }
 
 // extractFromWidgets extracts attachment references from widgets array
-func (h *AttachmentHandler) extractFromWidgets(widgets []interface{}) []*models.AttachmentReference {
-	references := make([]*models.AttachmentReference, 0)
+func (h *AttachmentHandler) extractFromWidgets(widgets []interface{}) []*entity.AttachmentReference {
+	references := make([]*entity.AttachmentReference, 0)
 
 	for _, w := range widgets {
 		widget, ok := w.(map[string]interface{})
@@ -96,7 +96,7 @@ func (h *AttachmentHandler) extractFromWidgets(widgets []interface{}) []*models.
 
 			for _, v := range value {
 				if urlStr, ok := v.(string); ok && urlStr != "" {
-					ref := &models.AttachmentReference{
+					ref := &entity.AttachmentReference{
 						URL:          urlStr,
 						OriginalName: ext,
 					}
@@ -111,7 +111,7 @@ func (h *AttachmentHandler) extractFromWidgets(widgets []interface{}) []*models.
 
 // DownloadAttachment downloads a file from Lark Drive API
 // Implements ARCH-002: Download attachments from Lark Drive with auth
-func (h *AttachmentHandler) DownloadAttachment(ctx context.Context, url, token string) (*models.AttachmentFile, error) {
+func (h *AttachmentHandler) DownloadAttachment(ctx context.Context, url, token string) (*entity.AttachmentFile, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -152,7 +152,7 @@ func (h *AttachmentHandler) DownloadAttachment(ctx context.Context, url, token s
 		mimeType = "application/octet-stream"
 	}
 
-	file := &models.AttachmentFile{
+	file := &entity.AttachmentFile{
 		Content:  content,
 		FileName: "attachment",
 		MimeType: mimeType,
@@ -169,7 +169,7 @@ func (h *AttachmentHandler) DownloadAttachment(ctx context.Context, url, token s
 
 // DownloadAttachmentWithRetry downloads with exponential backoff retry
 // Implements ARCH-006: Retry failed downloads with exponential backoff
-func (h *AttachmentHandler) DownloadAttachmentWithRetry(ctx context.Context, url, token string, maxAttempts int) (*models.AttachmentFile, error) {
+func (h *AttachmentHandler) DownloadAttachmentWithRetry(ctx context.Context, url, token string, maxAttempts int) (*entity.AttachmentFile, error) {
 	var lastErr error
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
@@ -211,7 +211,7 @@ func (h *AttachmentHandler) DownloadAttachmentWithRetry(ctx context.Context, url
 // Format (withSubdir=false, item!=nil): invoice_{larkInstanceID}_{amount}_{currency}.{ext}
 // Format (withSubdir=true with item):  {larkInstanceID}/invoice_{larkInstanceID}_{amount}_{currency}.{ext}
 // Format (withSubdir=true without item):  {larkInstanceID}/{originalName}
-func (h *AttachmentHandler) GenerateFileName(larkInstanceID string, attachmentID int64, originalName string, withSubdir bool, item *models.ReimbursementItem) string {
+func (h *AttachmentHandler) GenerateFileName(larkInstanceID string, attachmentID int64, originalName string, withSubdir bool, item *entity.ReimbursementItem) string {
 	// Sanitize originalName to prevent path traversal issues from originalName itself
 	safeOriginalName := filepath.Base(originalName)
 	ext := filepath.Ext(safeOriginalName)

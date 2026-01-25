@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/garyjia/ai-reimbursement/internal/models"
+	"github.com/garyjia/ai-reimbursement/internal/domain/entity"
 	"go.uber.org/zap"
 )
 
@@ -43,7 +43,7 @@ func NewFormParserWithAttachmentSupport(logger *zap.Logger) *FormParser {
 }
 
 // Parse transforms raw Lark form JSON into reimbursement items
-func (fp *FormParser) Parse(jsonData string) ([]*models.ReimbursementItem, error) {
+func (fp *FormParser) Parse(jsonData string) ([]*entity.ReimbursementItem, error) {
 	if jsonData == "" {
 		return nil, fmt.Errorf("empty form data")
 	}
@@ -54,7 +54,7 @@ func (fp *FormParser) Parse(jsonData string) ([]*models.ReimbursementItem, error
 		return nil, fmt.Errorf("failed to parse form JSON: %w", err)
 	}
 
-	var items []*models.ReimbursementItem
+	var items []*entity.ReimbursementItem
 
 	// Try to extract items from common Lark form structures
 	// Lark forms typically have a "form" or "widgets" field containing form fields
@@ -99,7 +99,7 @@ func (fp *FormParser) Parse(jsonData string) ([]*models.ReimbursementItem, error
 
 // ParseWithAttachments parses form data and also extracts attachments
 // Implements ARCH-001: Parse items and attachments without blocking each other
-func (fp *FormParser) ParseWithAttachments(jsonData string) ([]*models.ReimbursementItem, []*models.AttachmentReference, error) {
+func (fp *FormParser) ParseWithAttachments(jsonData string) ([]*entity.ReimbursementItem, []*entity.AttachmentReference, error) {
 	// Parse items normally (this should not fail due to attachment issues)
 	items, err := fp.Parse(jsonData)
 	if err != nil {
@@ -357,19 +357,19 @@ func (fp *FormParser) mapLarkReimbursementType(larkType string) string {
 	// Check for exact matches first (more reliable)
 	switch larkType {
 	case "差旅费", "差旅":
-		return models.ItemTypeTravel
+		return entity.ItemTypeTravel
 	case "住宿费", "住宿":
-		return models.ItemTypeAccommodation
+		return entity.ItemTypeAccommodation
 	case "交通费", "交通":
-		return models.ItemTypeTransportation
+		return entity.ItemTypeTransportation
 	case "招待费", "招待":
-		return models.ItemTypeEntertainment
+		return entity.ItemTypeEntertainment
 	case "团建费", "团建":
-		return models.ItemTypeTeamBuilding
+		return entity.ItemTypeTeamBuilding
 	case "通讯费", "通讯":
-		return models.ItemTypeCommunication
+		return entity.ItemTypeCommunication
 	case "其他":
-		return models.ItemTypeOther
+		return entity.ItemTypeOther
 	}
 
 	// Fallback to fuzzy matching for flexibility
@@ -377,31 +377,31 @@ func (fp *FormParser) mapLarkReimbursementType(larkType string) string {
 
 	// Map common Lark reimbursement types
 	if strings.Contains(larkTypeLower, "住宿") || strings.Contains(larkTypeLower, "accommodation") {
-		return models.ItemTypeAccommodation
+		return entity.ItemTypeAccommodation
 	}
 	if strings.Contains(larkTypeLower, "差旅") || strings.Contains(larkTypeLower, "travel") {
-		return models.ItemTypeTravel
+		return entity.ItemTypeTravel
 	}
 	if strings.Contains(larkTypeLower, "交通") || strings.Contains(larkTypeLower, "transportation") {
-		return models.ItemTypeTransportation
+		return entity.ItemTypeTransportation
 	}
 	if strings.Contains(larkTypeLower, "招待") || strings.Contains(larkTypeLower, "entertainment") {
-		return models.ItemTypeEntertainment
+		return entity.ItemTypeEntertainment
 	}
 	if strings.Contains(larkTypeLower, "团建") || strings.Contains(larkTypeLower, "team") {
-		return models.ItemTypeTeamBuilding
+		return entity.ItemTypeTeamBuilding
 	}
 	if strings.Contains(larkTypeLower, "通讯") || strings.Contains(larkTypeLower, "communication") {
-		return models.ItemTypeCommunication
+		return entity.ItemTypeCommunication
 	}
 	if strings.Contains(larkTypeLower, "餐饮") || strings.Contains(larkTypeLower, "meal") || strings.Contains(larkTypeLower, "餐费") {
-		return models.ItemTypeMeal
+		return entity.ItemTypeMeal
 	}
 	if strings.Contains(larkTypeLower, "设备") || strings.Contains(larkTypeLower, "equipment") || strings.Contains(larkTypeLower, "办公") {
-		return models.ItemTypeEquipment
+		return entity.ItemTypeEquipment
 	}
 
-	return models.ItemTypeOther
+	return entity.ItemTypeOther
 }
 
 // inferItemsFromFields tries to infer item data from individual form fields
@@ -463,8 +463,8 @@ func (fp *FormParser) extractFieldIndex(fieldName string) (int, string) {
 }
 
 // parseItem parses a single item from item data
-func (fp *FormParser) parseItem(itemData map[string]interface{}) (*models.ReimbursementItem, error) {
-	item := &models.ReimbursementItem{
+func (fp *FormParser) parseItem(itemData map[string]interface{}) (*entity.ReimbursementItem, error) {
+	item := &entity.ReimbursementItem{
 		Currency: "CNY", // Default currency
 	}
 
@@ -638,23 +638,23 @@ func (fp *FormParser) inferItemType(description string) string {
 	if strings.Contains(desc, "flight") || strings.Contains(desc, "airline") || strings.Contains(desc, "机票") ||
 		strings.Contains(desc, "train") || strings.Contains(desc, "taxi") || strings.Contains(desc, "car") ||
 		strings.Contains(desc, "travel") || strings.Contains(desc, "trip") {
-		return models.ItemTypeTravel
+		return entity.ItemTypeTravel
 	}
 	if strings.Contains(desc, "hotel") || strings.Contains(desc, "accommodation") || strings.Contains(desc, "住宿") ||
 		strings.Contains(desc, "lodge") || strings.Contains(desc, "stay") {
-		return models.ItemTypeAccommodation
+		return entity.ItemTypeAccommodation
 	}
 	if strings.Contains(desc, "meal") || strings.Contains(desc, "lunch") || strings.Contains(desc, "dinner") ||
 		strings.Contains(desc, "breakfast") || strings.Contains(desc, "restaurant") || strings.Contains(desc, "食") ||
 		strings.Contains(desc, "food") || strings.Contains(desc, "coffee") {
-		return models.ItemTypeMeal
+		return entity.ItemTypeMeal
 	}
 	if strings.Contains(desc, "equipment") || strings.Contains(desc, "device") || strings.Contains(desc, "软件") ||
 		strings.Contains(desc, "设备") || strings.Contains(desc, "laptop") || strings.Contains(desc, "computer") ||
 		strings.Contains(desc, "software") || strings.Contains(desc, "license") || strings.Contains(desc, "office") ||
 		strings.Contains(desc, "supplies") {
-		return models.ItemTypeEquipment
+		return entity.ItemTypeEquipment
 	}
 
-	return models.ItemTypeOther
+	return entity.ItemTypeOther
 }
