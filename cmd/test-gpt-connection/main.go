@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/garyjia/ai-reimbursement/internal/ai"
-	"github.com/garyjia/ai-reimbursement/internal/models"
+	"github.com/garyjia/ai-reimbursement/internal/domain/entity"
 	"go.uber.org/zap"
 )
 
@@ -75,7 +75,7 @@ func main() {
 	fmt.Println("✓ PolicyValidator initialized")
 
 	// Test item
-	testItem := &models.ReimbursementItem{
+	testItem := &entity.ReimbursementItem{
 		ID:          1,
 		ItemType:    "TRAVEL",
 		Description: "Business flight to Beijing for client meeting - economy class",
