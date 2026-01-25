@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/garyjia/ai-reimbursement/internal/models"
+	"github.com/garyjia/ai-reimbursement/internal/domain/entity"
 	openai "github.com/sashabaranov/go-openai"
 	"go.uber.org/zap"
 )
@@ -31,7 +31,7 @@ func NewExtractor(apiKey, model string, logger *zap.Logger) *Extractor {
 }
 
 // ExtractFromPDF extracts invoice data from a PDF file
-func (e *Extractor) ExtractFromPDF(ctx context.Context, pdfPath string) (*models.ExtractedInvoiceData, error) {
+func (e *Extractor) ExtractFromPDF(ctx context.Context, pdfPath string) (*entity.ExtractedInvoiceData, error) {
 	e.logger.Info("Extracting invoice data from PDF", zap.String("pdf_path", pdfPath))
 
 	// Read PDF file
@@ -74,7 +74,7 @@ func (e *Extractor) ExtractFromPDF(ctx context.Context, pdfPath string) (*models
 
 	content := resp.Choices[0].Message.Content
 
-	var extractedData models.ExtractedInvoiceData
+	var extractedData entity.ExtractedInvoiceData
 	if err := json.Unmarshal([]byte(content), &extractedData); err != nil {
 		e.logger.Error("Failed to parse extraction result",
 			zap.Error(err),
@@ -96,9 +96,9 @@ func (e *Extractor) ExtractFromPDF(ctx context.Context, pdfPath string) (*models
 }
 
 // ExtractFromText extracts invoice data from OCR text
-func (e *Extractor) ExtractFromText(ctx context.Context, ocrText string) (*models.ExtractedInvoiceData, error) {
+func (e *Extractor) ExtractFromText(ctx context.Context, ocrText string) (*entity.ExtractedInvoiceData, error) {
 	// Use regex patterns to extract key invoice fields
-	data := &models.ExtractedInvoiceData{
+	data := &entity.ExtractedInvoiceData{
 		RawData: make(map[string]interface{}),
 	}
 
@@ -145,7 +145,7 @@ func (e *Extractor) ExtractFromText(ctx context.Context, ocrText string) (*model
 }
 
 // extractWithAI uses AI to extract invoice data when regex fails
-func (e *Extractor) extractWithAI(ctx context.Context, text string) (*models.ExtractedInvoiceData, error) {
+func (e *Extractor) extractWithAI(ctx context.Context, text string) (*entity.ExtractedInvoiceData, error) {
 	prompt := fmt.Sprintf(`Extract invoice information from this Chinese invoice text:
 
 %s
@@ -192,7 +192,7 @@ Return JSON with the following structure:
 		return nil, fmt.Errorf("no AI response")
 	}
 
-	var data models.ExtractedInvoiceData
+	var data entity.ExtractedInvoiceData
 	if err := json.Unmarshal([]byte(resp.Choices[0].Message.Content), &data); err != nil {
 		return nil, fmt.Errorf("failed to parse AI response: %w", err)
 	}

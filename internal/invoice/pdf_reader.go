@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/garyjia/ai-reimbursement/internal/models"
+	"github.com/garyjia/ai-reimbursement/internal/domain/entity"
 	"github.com/gen2brain/go-fitz"
 	openai "github.com/sashabaranov/go-openai"
 	"go.uber.org/zap"
@@ -37,7 +37,7 @@ func NewPDFReader(apiKey, model string, logger *zap.Logger) *PDFReader {
 }
 
 // ReadAndExtract reads a PDF file and extracts invoice data using Vision API
-func (r *PDFReader) ReadAndExtract(ctx context.Context, pdfPath string) (*models.ExtractedInvoiceData, error) {
+func (r *PDFReader) ReadAndExtract(ctx context.Context, pdfPath string) (*entity.ExtractedInvoiceData, error) {
 	r.logger.Info("Reading PDF for invoice extraction", zap.String("path", pdfPath))
 
 	// Step 1: Convert PDF to images
@@ -178,7 +178,7 @@ func (r *PDFReader) encodeImageToJPEG(img image.Image) ([]byte, error) {
 }
 
 // extractWithVision uses GPT-4 Vision to extract invoice data from images
-func (r *PDFReader) extractWithVision(ctx context.Context, images [][]byte) (*models.ExtractedInvoiceData, error) {
+func (r *PDFReader) extractWithVision(ctx context.Context, images [][]byte) (*entity.ExtractedInvoiceData, error) {
 	r.logger.Info("Extracting invoice data with Vision API", zap.Int("image_count", len(images)))
 
 	// Build multi-modal message with images
@@ -236,7 +236,7 @@ func (r *PDFReader) extractWithVision(ctx context.Context, images [][]byte) (*mo
 	r.logger.Debug("Vision API response received", zap.Int("content_length", len(content)))
 
 	// Parse the JSON response
-	var extractedData models.ExtractedInvoiceData
+	var extractedData entity.ExtractedInvoiceData
 	if err := json.Unmarshal([]byte(content), &extractedData); err != nil {
 		r.logger.Error("Failed to parse Vision API response",
 			zap.Error(err),
