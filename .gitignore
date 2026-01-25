@@ -50,6 +50,7 @@ temp/
 
 # Build artifacts
 server
+main
 
 # Utility scripts (development only)
 reprocess_instance.go
