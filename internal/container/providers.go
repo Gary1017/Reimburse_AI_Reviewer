@@ -17,7 +17,6 @@ import (
 	"github.com/garyjia/ai-reimbursement/internal/infrastructure/persistence/sqlite"
 	"github.com/garyjia/ai-reimbursement/internal/infrastructure/storage"
 	"github.com/garyjia/ai-reimbursement/internal/infrastructure/worker"
-	"github.com/garyjia/ai-reimbursement/internal/lark"
 	"go.uber.org/zap"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -31,7 +30,7 @@ type DatabaseBundle struct {
 
 // LarkBundle holds all Lark-related components.
 type LarkBundle struct {
-	Client     *lark.Client
+	Client     *infraLark.SDKClient
 	Adapter    port.LarkClient
 	Downloader port.LarkAttachmentDownloader
 	Messenger  port.LarkMessageSender
@@ -113,21 +112,21 @@ func ProvideLarkClients(cfg *LarkConfig, storageCfg *StorageConfig, logger *zap.
 		return nil, fmt.Errorf("logger is required")
 	}
 
-	// Create base Lark client
-	larkCfg := lark.Config{
+	// Create base Lark SDK client
+	larkCfg := infraLark.Config{
 		AppID:        cfg.AppID,
 		AppSecret:    cfg.AppSecret,
 		ApprovalCode: cfg.ApprovalCode,
 	}
-	larkClient := lark.NewClient(larkCfg, logger)
+	sdkClient := infraLark.NewSDKClient(larkCfg, logger)
 
 	// Create port adapters
-	adapter := infraLark.NewClient(larkClient, logger)
+	adapter := infraLark.NewClient(sdkClient, logger)
 	downloader := infraLark.NewDownloader(storageCfg.AttachmentDir, logger)
-	messenger := infraLark.NewMessenger(larkClient, logger)
+	messenger := infraLark.NewMessenger(sdkClient, logger)
 
 	return &LarkBundle{
-		Client:     larkClient,
+		Client:     sdkClient,
 		Adapter:    adapter,
 		Downloader: downloader,
 		Messenger:  messenger,

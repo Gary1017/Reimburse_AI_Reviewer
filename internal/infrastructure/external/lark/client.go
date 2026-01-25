@@ -7,22 +7,21 @@ import (
 	"strconv"
 
 	"github.com/garyjia/ai-reimbursement/internal/application/port"
-	"github.com/garyjia/ai-reimbursement/internal/lark"
 	"go.uber.org/zap"
 )
 
 // Client implements port.LarkClient interface
 type Client struct {
-	larkClient  *lark.Client
-	approvalAPI *lark.ApprovalAPI
+	sdkClient   *SDKClient
+	approvalAPI *ApprovalAPI
 	logger      *zap.Logger
 }
 
 // NewClient creates a new Lark client adapter
-func NewClient(larkClient *lark.Client, logger *zap.Logger) *Client {
+func NewClient(sdkClient *SDKClient, logger *zap.Logger) *Client {
 	return &Client{
-		larkClient:  larkClient,
-		approvalAPI: lark.NewApprovalAPI(larkClient, logger),
+		sdkClient:   sdkClient,
+		approvalAPI: NewApprovalAPI(sdkClient, logger),
 		logger:      logger,
 	}
 }
@@ -120,4 +119,3 @@ func derefString(s *string) string {
 	}
 	return *s
 }
-

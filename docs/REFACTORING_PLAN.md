@@ -996,7 +996,7 @@ Migrate `internal/models/` imports to `internal/domain/entity/` across all remai
 | Phase 4 | ARCH-130, 131, 132 | ✅ Complete | 2026-01-24 |
 | Phase 5 | ARCH-140, 141 | ✅ Complete | 2026-01-24 |
 | Phase 6 | ARCH-150, 151, 152 | ✅ Complete | 2026-01-24 |
-| Phase 7 | ARCH-200 - 211 | 🔄 Pending | - |
+| Phase 7 | ARCH-200 - 211 | ✅ Complete | 2026-01-25 |
 
 ### Deprecated Code Removed
 
@@ -1011,16 +1011,22 @@ The following packages were removed after Phase 6:
 
 **Total removed:** 27 files, ~7,000 lines of deprecated code
 
-### Remaining Work
+### Phase 7 Migration Complete
 
-**`internal/models/`** package still exists with 16 files importing it:
-- `internal/ai/` (4 files)
-- `internal/invoice/` (2 files)
-- `internal/lark/` (3 files)
-- `internal/voucher/` (6 files)
-- `cmd/test-gpt-connection/` (1 file)
+**`internal/models/` package has been removed.** All types migrated to `internal/domain/entity/`:
 
-These will be migrated in Phase 7 (ARCH-200 to ARCH-211).
+- `internal/ai/` (4 files) - Migrated to entity
+- `internal/invoice/` (2 files) - Migrated to entity
+- `internal/lark/` (3 files + 2 tests) - Migrated to entity
+- `internal/voucher/` (6 files + 5 tests) - Migrated to entity
+- `cmd/test-gpt-connection/` (1 file) - Migrated to entity
+- `internal/infrastructure/external/openai/` (1 file) - Migrated to entity
+
+**New entity files created:**
+- `internal/domain/entity/constants.go` - Status, item type, and audit decision constants
+- `internal/domain/entity/history.go` - AIAuditResult, PolicyValidationResult, PriceBenchmarkResult types
+
+**Total Phase 7 Impact:** ~25 files migrated, `internal/models/` package removed
 
 ---
 

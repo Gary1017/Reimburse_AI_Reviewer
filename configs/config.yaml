@@ -1,0 +1,46 @@
+server:
+  host: localhost
+  port: 8080
+  read_timeout: 30s
+  write_timeout: 30s
+
+database:
+  path: data/reimbursement.db
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 5m
+  migrations_dir: migrations
+
+lark:
+  # Set via environment variables: LARK_APP_ID, LARK_APP_SECRET, LARK_APPROVAL_CODE
+  app_id: ""
+  app_secret: ""
+  approval_code: ""  # Unique approval definition code from Lark admin console
+  api_timeout: 30s
+
+openai:
+  # Set via environment variable: OPENAI_API_KEY
+  api_key: ""
+  model: gpt-4o
+  temperature: 0.3
+  max_tokens: 1000
+  timeout: 60s
+
+email:
+  # Set via environment variable: ACCOUNTANT_EMAIL
+  accountant_email: "garyjia87@gmail.com"
+  sender_name: "AI Reimbursement System"
+
+voucher:
+  template_path: templates/reimbursement_form.xlsx
+  output_dir: generated_vouchers
+  attachment_dir: attachments  # Directory to store downloaded attachments
+  font_path: configs/NotoSansCJKsc-Regular.otf  # CJK font for Excel files (optional, graceful degradation if not found)
+  company_name: "Your Company Name"  # Set via environment variable: COMPANY_NAME
+  company_tax_id: "91XXXXXXXXXXXXXXXXX"  # Set via environment variable: COMPANY_TAX_ID
+  price_deviation_threshold: 0.3  # 30% deviation triggers manual review
+
+logger:
+  level: debug  # debug, info, warn, error
+  output_path: logs/server.log  # stdout, stderr, or file path
+  format: json  # json or console

@@ -11,9 +11,9 @@ import (
 	"github.com/garyjia/ai-reimbursement/internal/application/port"
 	"github.com/garyjia/ai-reimbursement/internal/application/service"
 	"github.com/garyjia/ai-reimbursement/internal/application/workflow"
+	infraLark "github.com/garyjia/ai-reimbursement/internal/infrastructure/external/lark"
 	"github.com/garyjia/ai-reimbursement/internal/infrastructure/persistence/sqlite"
 	"github.com/garyjia/ai-reimbursement/internal/infrastructure/worker"
-	"github.com/garyjia/ai-reimbursement/internal/lark"
 	"go.uber.org/zap"
 )
 
@@ -30,7 +30,7 @@ type Container struct {
 	repositories *RepositoryBundle
 
 	// Infrastructure - External
-	larkClient     *lark.Client
+	larkClient     *infraLark.SDKClient
 	larkAdapter    port.LarkClient
 	larkDownloader port.LarkAttachmentDownloader
 	larkMessenger  port.LarkMessageSender
@@ -515,8 +515,8 @@ func (c *Container) Workers() *worker.WorkerManager {
 	return c.workers
 }
 
-// RawLarkClient returns the underlying Lark client for WebSocket setup.
-func (c *Container) RawLarkClient() *lark.Client {
+// RawLarkClient returns the underlying Lark SDK client for WebSocket setup.
+func (c *Container) RawLarkClient() *infraLark.SDKClient {
 	return c.larkClient
 }
 

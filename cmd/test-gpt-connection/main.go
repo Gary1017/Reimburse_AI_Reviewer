@@ -8,8 +8,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/garyjia/ai-reimbursement/internal/ai"
+	"github.com/garyjia/ai-reimbursement/internal/application/port"
 	"github.com/garyjia/ai-reimbursement/internal/domain/entity"
+	"github.com/garyjia/ai-reimbursement/internal/infrastructure/external/openai"
 	"go.uber.org/zap"
 )
 
@@ -65,14 +66,24 @@ func main() {
 	}
 	fmt.Printf("✓ Policy file found: %s\n\n", *policyFile)
 
-	// Create policy validator
-	fmt.Println("Initializing PolicyValidator...")
-	validator, err := ai.NewPolicyValidator(*apiKey, "gpt-4", 0.3, *policyFile, logger)
+	// Load policies from file
+	policies, err := loadPolicies(*policyFile)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ERROR: Failed to create PolicyValidator: %v\n", err)
+		fmt.Fprintf(os.Stderr, "ERROR: Failed to load policies: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Println("✓ PolicyValidator initialized")
+
+	// Create AI auditor using infrastructure package
+	fmt.Println("Initializing AI Auditor...")
+	auditor := openai.NewAuditor(
+		*apiKey,
+		"gpt-4",
+		0.3,
+		policies,
+		0.2, // 20% price deviation threshold
+		logger,
+	)
+	fmt.Println("✓ AI Auditor initialized")
 
 	// Test item
 	testItem := &entity.ReimbursementItem{
@@ -99,7 +110,7 @@ func main() {
 	defer cancel()
 
 	startTime := time.Now()
-	result, err := validator.Validate(ctx, testItem)
+	result, err := auditor.AuditPolicy(ctx, testItem, nil)
 	duration := time.Since(startTime)
 
 	if err != nil {
@@ -141,3 +152,21 @@ func main() {
 	fmt.Println("\n✅ GPT-4 Connection Test PASSED!")
 	os.Exit(0)
 }
+
+// loadPolicies loads policies from a JSON file
+func loadPolicies(path string) (map[string]interface{}, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var policies map[string]interface{}
+	if err := json.Unmarshal(data, &policies); err != nil {
+		return nil, err
+	}
+
+	return policies, nil
+}
+
+// Ensure auditor implements port.AIAuditor (compile-time check)
+var _ port.AIAuditor = (*openai.Auditor)(nil)

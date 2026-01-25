@@ -6,20 +6,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/garyjia/ai-reimbursement/internal/lark"
 	"go.uber.org/zap"
 )
 
 // Downloader implements port.LarkAttachmentDownloader interface
 type Downloader struct {
-	handler *lark.AttachmentHandler
+	handler *AttachmentHandler
 	logger  *zap.Logger
 }
 
 // NewDownloader creates a new Lark attachment downloader adapter
 func NewDownloader(attachmentDir string, logger *zap.Logger) *Downloader {
 	return &Downloader{
-		handler: lark.NewAttachmentHandler(logger, attachmentDir),
+		handler: NewAttachmentHandler(logger, attachmentDir),
 		logger:  logger,
 	}
 }

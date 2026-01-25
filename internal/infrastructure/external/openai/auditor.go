@@ -7,7 +7,6 @@ import (
 
 	"github.com/garyjia/ai-reimbursement/internal/application/port"
 	"github.com/garyjia/ai-reimbursement/internal/domain/entity"
-	"github.com/garyjia/ai-reimbursement/internal/models"
 	openai "github.com/sashabaranov/go-openai"
 	"go.uber.org/zap"
 )
@@ -70,7 +69,7 @@ func (a *Auditor) AuditPolicy(ctx context.Context, item *entity.ReimbursementIte
 
 	content := resp.Choices[0].Message.Content
 
-	var result models.PolicyValidationResult
+	var result entity.PolicyValidationResult
 	if err := json.Unmarshal([]byte(content), &result); err != nil {
 		// Fallback: try to extract JSON from markdown code blocks
 		if jsonStr := extractJSON(content); jsonStr != "" {
@@ -131,7 +130,7 @@ func (a *Auditor) AuditPrice(ctx context.Context, item *entity.ReimbursementItem
 
 	content := resp.Choices[0].Message.Content
 
-	var result models.PriceBenchmarkResult
+	var result entity.PriceBenchmarkResult
 	if err := json.Unmarshal([]byte(content), &result); err != nil {
 		a.logger.Error("Failed to parse OpenAI response",
 			zap.Error(err),
@@ -220,7 +219,7 @@ func (a *Auditor) ExtractInvoice(ctx context.Context, imageData []byte, mimeType
 
 	content := resp.Choices[0].Message.Content
 
-	var extractedData models.ExtractedInvoiceData
+	var extractedData entity.ExtractedInvoiceData
 	if err := json.Unmarshal([]byte(content), &extractedData); err != nil {
 		a.logger.Error("Failed to parse Vision API response",
 			zap.Error(err),
@@ -399,8 +398,8 @@ IMPORTANT:
 - If a field is not visible or unclear, use empty string "" or 0.`
 }
 
-// toPolicyAuditResult converts models.PolicyValidationResult to port.PolicyAuditResult
-func (a *Auditor) toPolicyAuditResult(result *models.PolicyValidationResult) *port.PolicyAuditResult {
+// toPolicyAuditResult converts entity.PolicyValidationResult to port.PolicyAuditResult
+func (a *Auditor) toPolicyAuditResult(result *entity.PolicyValidationResult) *port.PolicyAuditResult {
 	return &port.PolicyAuditResult{
 		Compliant:  result.Compliant,
 		Violations: result.Violations,
@@ -409,8 +408,8 @@ func (a *Auditor) toPolicyAuditResult(result *models.PolicyValidationResult) *po
 	}
 }
 
-// toPriceAuditResult converts models.PriceBenchmarkResult to port.PriceAuditResult
-func (a *Auditor) toPriceAuditResult(result *models.PriceBenchmarkResult, rangeLen int) *port.PriceAuditResult {
+// toPriceAuditResult converts entity.PriceBenchmarkResult to port.PriceAuditResult
+func (a *Auditor) toPriceAuditResult(result *entity.PriceBenchmarkResult, rangeLen int) *port.PriceAuditResult {
 	var min, max float64
 	if rangeLen >= 2 {
 		min = result.EstimatedPriceRange[0]
@@ -427,8 +426,8 @@ func (a *Auditor) toPriceAuditResult(result *models.PriceBenchmarkResult, rangeL
 	}
 }
 
-// toInvoiceExtractionResult converts models.ExtractedInvoiceData to port.InvoiceExtractionResult
-func (a *Auditor) toInvoiceExtractionResult(data *models.ExtractedInvoiceData) *port.InvoiceExtractionResult {
+// toInvoiceExtractionResult converts entity.ExtractedInvoiceData to port.InvoiceExtractionResult
+func (a *Auditor) toInvoiceExtractionResult(data *entity.ExtractedInvoiceData) *port.InvoiceExtractionResult {
 	extractedData := make(map[string]interface{})
 	extractedData["invoice_type"] = data.InvoiceType
 	extractedData["amount_without_tax"] = data.AmountWithoutTax

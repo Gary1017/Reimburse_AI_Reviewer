@@ -5,20 +5,19 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/garyjia/ai-reimbursement/internal/lark"
 	"go.uber.org/zap"
 )
 
 // Messenger implements port.LarkMessageSender interface
 type Messenger struct {
-	messageAPI *lark.MessageAPI
+	messageAPI *MessageAPI
 	logger     *zap.Logger
 }
 
 // NewMessenger creates a new Lark message sender adapter
-func NewMessenger(larkClient *lark.Client, logger *zap.Logger) *Messenger {
+func NewMessenger(sdkClient *SDKClient, logger *zap.Logger) *Messenger {
 	return &Messenger{
-		messageAPI: lark.NewMessageAPI(larkClient, logger),
+		messageAPI: NewMessageAPI(sdkClient, logger),
 		logger:     logger,
 	}
 }

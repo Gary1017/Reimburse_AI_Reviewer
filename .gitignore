@@ -25,7 +25,6 @@ go.work
 *~
 
 # Configuration files with secrets
-configs/config.yaml
 .env
 .env.local
 
