@@ -14,6 +14,7 @@ import (
 	infraLark "github.com/garyjia/ai-reimbursement/internal/infrastructure/external/lark"
 	"github.com/garyjia/ai-reimbursement/internal/infrastructure/persistence/sqlite"
 	"github.com/garyjia/ai-reimbursement/internal/infrastructure/worker"
+	"github.com/garyjia/ai-reimbursement/internal/interfaces/websocket"
 	"go.uber.org/zap"
 )
 
@@ -47,6 +48,9 @@ type Container struct {
 
 	// Workers
 	workers *worker.WorkerManager
+
+	// WebSocket Adapters
+	larkWSAdapter *websocket.LarkAdapter
 
 	// Lifecycle
 	mu      sync.RWMutex
@@ -166,6 +170,12 @@ func (c *Container) Start(ctx context.Context) error {
 	}
 	c.logger.Info("Workers initialized and started")
 
+	// Step 7: Initialize and start WebSocket adapters
+	if err := c.initWebSocketAdapters(); err != nil {
+		return fmt.Errorf("failed to initialize WebSocket adapters: %w", err)
+	}
+	c.logger.Info("WebSocket adapters initialized and started")
+
 	c.ready.Store(true)
 	c.logger.Info("Container started successfully")
 
@@ -185,12 +195,22 @@ func (c *Container) Close() error {
 
 	var errs []error
 
-	// Cancel context to signal all goroutines
+	// Cancel context to signal all goroutines (stops WebSocket adapters)
 	if c.cancel != nil {
 		c.cancel()
 	}
 
-	// Step 1: Stop workers (reverse of step 6)
+	// Step 1: Stop WebSocket adapters (reverse of step 7)
+	if c.larkWSAdapter != nil {
+		if err := c.larkWSAdapter.Stop(); err != nil {
+			c.logger.Error("Failed to stop Lark WebSocket adapter", zap.Error(err))
+			errs = append(errs, fmt.Errorf("stop lark websocket adapter: %w", err))
+		} else {
+			c.logger.Info("Lark WebSocket adapter stopped")
+		}
+	}
+
+	// Step 2: Stop workers (reverse of step 6)
 	if c.workers != nil {
 		if err := c.workers.StopAll(); err != nil {
 			c.logger.Error("Failed to stop workers", zap.Error(err))
@@ -200,7 +220,7 @@ func (c *Container) Close() error {
 		}
 	}
 
-	// Step 2: Close dispatcher (reverse of step 5)
+	// Step 3: Close dispatcher (reverse of step 5)
 	if c.dispatcher != nil {
 		if err := c.dispatcher.Close(); err != nil {
 			c.logger.Error("Failed to close dispatcher", zap.Error(err))
@@ -210,16 +230,16 @@ func (c *Container) Close() error {
 		}
 	}
 
-	// Step 3: Services don't need explicit cleanup (reverse of step 4)
+	// Step 4: Services don't need explicit cleanup (reverse of step 4)
 	c.logger.Info("Services cleaned up")
 
-	// Step 4: Storage doesn't need explicit cleanup (reverse of step 3)
+	// Step 5: Storage doesn't need explicit cleanup (reverse of step 3)
 	c.logger.Info("Storage cleaned up")
 
-	// Step 5: External clients don't need explicit cleanup (reverse of step 2)
+	// Step 6: External clients don't need explicit cleanup (reverse of step 2)
 	c.logger.Info("External clients cleaned up")
 
-	// Step 6: Close database (reverse of step 1)
+	// Step 7: Close database (reverse of step 1)
 	if c.sqlDB != nil {
 		if err := c.sqlDB.Close(); err != nil {
 			c.logger.Error("Failed to close database", zap.Error(err))
@@ -449,6 +469,34 @@ func (c *Container) initWorkers() error {
 	if err := c.workers.StartAll(c.ctx); err != nil {
 		return fmt.Errorf("failed to start workers: %w", err)
 	}
+
+	return nil
+}
+
+// initWebSocketAdapters initializes and starts WebSocket adapters for external event sources.
+func (c *Container) initWebSocketAdapters() error {
+	// Create Lark WebSocket adapter
+	larkWSAdapter := websocket.NewLarkAdapter(
+		websocket.LarkAdapterConfig{
+			AppID:        c.config.Lark.AppID,
+			AppSecret:    c.config.Lark.AppSecret,
+			ApprovalCode: c.config.Lark.ApprovalCode,
+		},
+		c.dispatcher,
+		c.logger,
+	)
+	c.larkWSAdapter = larkWSAdapter
+
+	// Start WebSocket adapter in a goroutine (Start() blocks)
+	go func() {
+		if err := larkWSAdapter.Start(c.ctx); err != nil {
+			c.logger.Error("Lark WebSocket adapter stopped with error", zap.Error(err))
+		}
+	}()
+
+	// Give the WebSocket connection a moment to establish
+	// In production, you might want to add a health check instead
+	c.logger.Info("Lark WebSocket adapter starting in background")
 
 	return nil
 }

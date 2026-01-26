@@ -3,13 +3,16 @@
 package container
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/garyjia/ai-reimbursement/internal/application/dispatcher"
 	"github.com/garyjia/ai-reimbursement/internal/application/port"
 	"github.com/garyjia/ai-reimbursement/internal/application/service"
 	"github.com/garyjia/ai-reimbursement/internal/application/workflow"
+	"github.com/garyjia/ai-reimbursement/internal/domain/entity"
 	"github.com/garyjia/ai-reimbursement/internal/domain/event"
 	infraLark "github.com/garyjia/ai-reimbursement/internal/infrastructure/external/lark"
 	"github.com/garyjia/ai-reimbursement/internal/infrastructure/external/openai"
@@ -286,6 +289,11 @@ func ProvideWorkflowEngine(deps *WorkflowDeps) (workflow.WorkflowEngine, error) 
 		workflow.WithDispatcher(deps.Dispatcher),
 	)
 
+	// Register instance creation handler (runs BEFORE workflow engine)
+	// This handler creates the instance record when instance.created events arrive
+	instanceCreationHandler := createInstanceCreationHandler(deps.Repos.Instance, deps.Repos.History, deps.TxManager, deps.Logger)
+	deps.Dispatcher.SubscribeNamed(event.TypeInstanceCreated, "instance_creator", instanceCreationHandler)
+
 	// Register workflow engine as event handler for all relevant event types
 	deps.Dispatcher.SubscribeNamed(event.TypeInstanceCreated, "workflow_engine", engine.HandleEvent)
 	deps.Dispatcher.SubscribeNamed(event.TypeInstanceApproved, "workflow_engine", engine.HandleEvent)
@@ -366,4 +374,89 @@ func ProvideWorkers(deps *WorkerDeps) (*worker.WorkerManager, error) {
 	manager.Register(invoiceWorker)
 
 	return manager, nil
+}
+
+// createInstanceCreationHandler creates a handler that creates instance records
+// when instance.created events arrive from Lark
+func createInstanceCreationHandler(
+	instanceRepo port.InstanceRepository,
+	historyRepo port.HistoryRepository,
+	txManager port.TransactionManager,
+	logger *zap.Logger,
+) func(context.Context, *event.Event) error {
+	return func(ctx context.Context, evt *event.Event) error {
+		if evt == nil {
+			return fmt.Errorf("event cannot be nil")
+		}
+
+		larkInstanceID := evt.LarkInstanceID
+		if larkInstanceID == "" {
+			return fmt.Errorf("event has no Lark instance ID")
+		}
+
+		logger.Info("Creating instance from Lark event",
+			zap.String("lark_instance_id", larkInstanceID),
+			zap.String("event_id", evt.ID))
+
+		// Check if instance already exists (idempotency)
+		existing, err := instanceRepo.GetByLarkInstanceID(ctx, larkInstanceID)
+		if err == nil && existing != nil {
+			logger.Info("Instance already exists, skipping creation",
+				zap.String("lark_instance_id", larkInstanceID),
+				zap.Int64("id", existing.ID))
+			return nil
+		}
+
+		// Create new instance with CREATED status
+		instance := &entity.ApprovalInstance{
+			LarkInstanceID: larkInstanceID,
+			Status:         "CREATED",
+			SubmissionTime: time.Now(),
+			CreatedAt:      time.Now(),
+			UpdatedAt:      time.Now(),
+		}
+
+		// Extract additional data from event payload if available
+		payload := evt.Payload
+		if userID, ok := payload["user_id"].(string); ok {
+			instance.ApplicantUserID = userID
+		}
+		if approvalCode, ok := payload["approval_code"].(string); ok {
+			// Store approval code if needed
+			logger.Debug("Approval code from event", zap.String("approval_code", approvalCode))
+		}
+
+		// Create instance and history in transaction
+		err = txManager.WithTransaction(ctx, func(txCtx context.Context) error {
+			if err := instanceRepo.Create(txCtx, instance); err != nil {
+				return fmt.Errorf("create instance: %w", err)
+			}
+
+			// Create initial history record
+			history := &entity.ApprovalHistory{
+				InstanceID:  instance.ID,
+				NewStatus:   "CREATED",
+				ActionType:  "SYSTEM",
+				Timestamp:   time.Now(),
+			}
+			if err := historyRepo.Create(txCtx, history); err != nil {
+				return fmt.Errorf("create history: %w", err)
+			}
+
+			return nil
+		})
+
+		if err != nil {
+			logger.Error("Failed to create instance",
+				zap.Error(err),
+				zap.String("lark_instance_id", larkInstanceID))
+			return fmt.Errorf("failed to create instance: %w", err)
+		}
+
+		logger.Info("Instance created successfully",
+			zap.String("lark_instance_id", larkInstanceID),
+			zap.Int64("id", instance.ID))
+
+		return nil
+	}
 }

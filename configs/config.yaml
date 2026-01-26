@@ -41,6 +41,6 @@ voucher:
   price_deviation_threshold: 0.3  # 30% deviation triggers manual review
 
 logger:
-  level: debug  # debug, info, warn, error
-  output_path: logs/server.log  # stdout, stderr, or file path
-  format: json  # json or console
+  level: debug  # debug, info, warn, error (file will use this level, console shows info+)
+  output_path: logs/server.log  # File path enables dual output: console (info+) + timestamped file (debug+)
+  format: json  # Format for file output (console always uses console format)

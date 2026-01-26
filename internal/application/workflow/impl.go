@@ -73,6 +73,23 @@ func (e *engineImpl) HandleEvent(ctx context.Context, evt *event.Event) error {
 		return fmt.Errorf("event cannot be nil")
 	}
 
+	// Resolve InstanceID from LarkInstanceID if not set
+	instanceID := evt.InstanceID
+	if instanceID == 0 && evt.LarkInstanceID != "" {
+		instance, err := e.instanceRepo.GetByLarkInstanceID(ctx, evt.LarkInstanceID)
+		if err != nil {
+			return fmt.Errorf("failed to resolve instance from Lark ID %s: %w", evt.LarkInstanceID, err)
+		}
+		if instance == nil {
+			return fmt.Errorf("instance not found for Lark ID %s", evt.LarkInstanceID)
+		}
+		instanceID = instance.ID
+	}
+
+	if instanceID == 0 {
+		return fmt.Errorf("event has no instance ID or Lark instance ID")
+	}
+
 	// Map event type to trigger
 	trigger, err := e.mapEventToTrigger(evt)
 	if err != nil {
@@ -85,7 +102,7 @@ func (e *engineImpl) HandleEvent(ctx context.Context, evt *event.Event) error {
 	}
 
 	// Execute the state transition
-	return e.TransitionState(ctx, evt.InstanceID, trigger)
+	return e.TransitionState(ctx, instanceID, trigger)
 }
 
 // GetStateMachine returns a state machine for an instance (creates if not cached)

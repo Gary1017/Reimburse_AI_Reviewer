@@ -141,6 +141,13 @@ func (a *LarkAdapter) handleLarkEvent(ctx context.Context, evt *larkevent.EventR
 		return fmt.Errorf("failed to parse event payload: %w", err)
 	}
 
+	// Log the parsed event details for debugging
+	a.logger.Debug("Parsed Lark event",
+		zap.String("event_type", larkEvent.Header.EventType),
+		zap.String("instance_code", larkEvent.Event.InstanceCode),
+		zap.String("approval_code", larkEvent.Event.ApprovalCode),
+		zap.String("status", larkEvent.Event.Status))
+
 	// Filter by approval code if configured
 	if a.approvalCode != "" && larkEvent.Event.ApprovalCode != "" {
 		if larkEvent.Event.ApprovalCode != a.approvalCode {
@@ -185,8 +192,8 @@ func (a *LarkAdapter) handleLarkEvent(ctx context.Context, evt *larkevent.EventR
 
 // translateToDomainEvent converts a Lark approval event to a domain event.
 // Returns nil if the event type should not be translated.
+// Note: Feishu only sends approval_instance events with status changes, not separate created/approved events
 func (a *LarkAdapter) translateToDomainEvent(larkEvent larkApprovalEvent) *event.Event {
-	eventType := strings.ToLower(larkEvent.Header.EventType)
 	status := strings.ToUpper(larkEvent.Event.Status)
 
 	// Build payload from Lark event data
@@ -209,32 +216,22 @@ func (a *LarkAdapter) translateToDomainEvent(larkEvent larkApprovalEvent) *event
 	// Determine domain event type based on Lark event
 	var domainEventType event.Type
 
-	switch {
-	case strings.Contains(eventType, "created"):
+	// Feishu only sends approval_instance events with status changes
+	// Map status values to appropriate domain events
+	switch status {
+	case "PENDING":
+		// User created approval, first status change
 		domainEventType = event.TypeInstanceCreated
-
-	case strings.Contains(eventType, "approved") || status == "APPROVED":
+	case "APPROVED":
 		domainEventType = event.TypeInstanceApproved
-
-	case strings.Contains(eventType, "rejected") || status == "REJECTED":
+	case "REJECTED":
 		domainEventType = event.TypeInstanceRejected
-
-	case strings.Contains(eventType, "status_changed"):
+	case "CANCELED", "DELETED", "REVERTED", "OVERTIME_CLOSE", "OVERTIME_RECOVER":
+		// Other status changes
 		domainEventType = event.TypeStatusChanged
-
 	default:
-		// Check if status field indicates a meaningful event
-		if status == "APPROVED" {
-			domainEventType = event.TypeInstanceApproved
-		} else if status == "REJECTED" {
-			domainEventType = event.TypeInstanceRejected
-		} else if status != "" {
-			// Generic status change
-			domainEventType = event.TypeStatusChanged
-		} else {
-			// Unknown event type, don't translate
-			return nil
-		}
+		// Unknown status
+		return nil
 	}
 
 	// Create domain event
