@@ -73,14 +73,23 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Load prompts
+	fmt.Println("Loading prompts...")
+	prompts, err := openai.LoadPrompts("configs/prompts.yaml")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading prompts: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("✓ Prompts loaded")
+
 	// Create AI auditor using infrastructure package
 	fmt.Println("Initializing AI Auditor...")
 	auditor := openai.NewAuditor(
 		*apiKey,
 		"gpt-4",
-		0.3,
 		policies,
 		0.2, // 20% price deviation threshold
+		prompts,
 		logger,
 	)
 	fmt.Println("✓ AI Auditor initialized")

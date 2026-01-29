@@ -369,8 +369,8 @@ func (c *Container) initExternalClients() error {
 	c.larkDownloader = larkBundle.Downloader
 	c.larkMessenger = larkBundle.Messenger
 
-	// Use provider to create AI auditor
-	auditor, err := ProvideAIAuditor(&c.config.OpenAI, c.logger)
+	// Use provider to create AI auditor with prompts
+	auditor, err := ProvideAIAuditor(&c.config.OpenAI, "configs/prompts.yaml", c.logger)
 	if err != nil {
 		return err
 	}

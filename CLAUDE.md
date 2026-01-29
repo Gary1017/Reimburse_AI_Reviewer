@@ -146,11 +146,13 @@ AI_Reimbursement/
 │
 ├── configs/
 │   ├── config.yaml                 # Main configuration (gitignored)
-│   └── config.example.yaml         # Example configuration
+│   ├── config.example.yaml         # Example configuration
+│   └── prompts.yaml                # AI prompts & model parameters (temperature, max_tokens)
 │
 └── docs/
     ├── ARCHITECTURE.md             # Detailed architecture documentation
-    └── DEVELOPMENT_PLAN.md         # Development roadmap
+    ├── DEVELOPMENT_PLAN.md         # Development roadmap
+    └── PROMPT_CONFIGURATION.md     # AI prompt configuration guide
 ```
 
 ---
@@ -502,6 +504,45 @@ Configuration is loaded from `configs/config.yaml` with environment variable ove
 // internal/config/config.go
 cfg, err := config.Load("configs/config.yaml")
 ```
+
+---
+
+## AI Prompt Configuration
+
+**All AI prompts and model parameters are externalized to `configs/prompts.yaml`.**
+
+This allows you to tune AI behavior without changing code:
+
+```yaml
+# configs/prompts.yaml
+policy_audit:
+  temperature: 0.3      # Controls randomness (0.0-2.0)
+  max_tokens: 1000      # Maximum response length
+  system: |
+    System prompt defining AI role
+  user_template: |
+    User prompt with {{.Variables}}
+
+price_audit:
+  temperature: 0.3
+  max_tokens: 1000
+  # ... prompts
+
+invoice_extraction:
+  temperature: 0.1      # Lower = more accurate
+  max_tokens: 4096      # Higher for detailed extraction
+  # ... prompts
+```
+
+**To update prompts or parameters:**
+1. Edit `configs/prompts.yaml`
+2. Restart the server
+
+**See [docs/PROMPT_CONFIGURATION.md](docs/PROMPT_CONFIGURATION.md) for:**
+- Available template variables
+- Temperature tuning guidelines
+- Optimization tips
+- Troubleshooting
 
 ---
 

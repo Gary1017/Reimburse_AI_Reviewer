@@ -1,0 +1,155 @@
+# AI Prompts Configuration
+# This file contains all prompts and model parameters used by the OpenAI auditor
+# All settings can be updated without changing the code
+
+# Policy Audit Configuration
+policy_audit:
+  # Model parameters
+  temperature: 0.3        # Controls randomness (0.0-2.0). Lower = more deterministic
+  max_tokens: 1000        # Maximum tokens in response
+
+  # Prompts
+  system: |
+    You are a financial compliance auditor for a Chinese enterprise. Evaluate reimbursement items against company policies. Always respond with valid JSON wrapped in ```json and ``` markers.
+
+  user_template: |
+    Evaluate this reimbursement item against company policies:
+
+    **Company Policies:**
+    {{.Policies}}
+
+    **Reimbursement Item:**
+    - Type: {{.ItemType}}
+    - Description: {{.Description}}
+    - Amount: {{.Amount}} {{.Currency}}
+
+    **Invoice Information:**
+    {{.InvoiceInfo}}
+
+    Please respond with ONLY a valid JSON object (no markdown, no explanation). The JSON must have this exact structure:
+    {
+      "compliant": boolean,
+      "violations": [string array of violation descriptions],
+      "confidence": number between 0.0 and 1.0,
+      "reasoning": string explaining your assessment
+    }
+
+    Provide a detailed evaluation. If there are any policy violations, list them in the violations array. Set confidence to reflect your certainty in the assessment.
+
+# Price Audit Configuration
+price_audit:
+  # Model parameters
+  temperature: 0.3        # Controls randomness (0.0-2.0). Lower = more deterministic
+  max_tokens: 1000        # Maximum tokens in response
+
+  # Prompts
+  system: |
+    You are a market price analyst for business expenses in China. Estimate if expenses are reasonable based on market rates. Always respond with valid JSON.
+
+  user_template: |
+    Estimate if this business expense is reasonable based on typical market prices in China:
+
+    **Expense Details:**
+    - Category: {{.ItemType}}
+    - Description: {{.Description}}
+    - Submitted Amount: {{.Amount}} {{.Currency}}{{.InvoiceInfo}}
+
+    **Context:**
+    Consider typical business expense patterns in China, regional price variations, and current market conditions.
+
+    **Required Response Format (JSON):**
+    {
+      "estimated_price_range": [min, max],
+      "submitted_price": float,
+      "deviation_percentage": float,
+      "reasonable": boolean,
+      "confidence": float (0.0 to 1.0),
+      "reasoning": string
+    }
+
+    Provide:
+    1. estimated_price_range: [minimum, maximum] reasonable price range
+    2. submitted_price: The amount being claimed ({{.SubmittedPrice}})
+    3. deviation_percentage: Percentage deviation from typical price
+    4. reasonable: Whether the price is within acceptable range
+    5. confidence: Your confidence in this assessment (0.0-1.0)
+    6. reasoning: Explanation of your assessment
+
+# Invoice Extraction Configuration
+invoice_extraction:
+  # Model parameters
+  temperature: 0.1        # Lower temperature for more accurate extraction
+  max_tokens: 4096        # Higher token limit for detailed invoice data
+
+  # Prompts
+  system: |
+    You are an expert in reading and extracting data from Chinese invoices (发票). You have perfect accuracy in reading invoice codes, numbers, amounts, and all other fields. Always respond with valid JSON.
+
+  user_template: |
+    Carefully examine this Chinese invoice image (发票) and extract ALL information.
+
+    This is a critical financial document. Please extract with 100% accuracy:
+
+    REQUIRED FIELDS (发票基本信息):
+    - invoice_code (发票代码): Usually 10 or 12 digits at the top
+    - invoice_number (发票号码): Usually 8 digits
+    - invoice_type (发票类型): 增值税专用发票, 增值税普通发票, 电子发票, etc.
+    - invoice_date (开票日期): Date in YYYY-MM-DD format
+
+    AMOUNT FIELDS (金额信息):
+    - total_amount (价税合计): Total amount INCLUDING tax - this is the main amount
+    - tax_amount (税额): Tax amount only
+    - amount_without_tax (金额): Amount BEFORE tax
+
+    SELLER INFORMATION (销售方信息):
+    - seller_name (销售方名称): Company name
+    - seller_tax_id (销售方税号): Tax registration number (15-20 chars)
+    - seller_address (销售方地址电话)
+    - seller_bank (销售方开户行及账号)
+
+    BUYER INFORMATION (购买方信息):
+    - buyer_name (购买方名称): Company name
+    - buyer_tax_id (购买方税号): Tax registration number
+    - buyer_address (购买方地址电话)
+    - buyer_bank (购买方开户行及账号)
+
+    LINE ITEMS (明细项目) - Extract ALL line items as an array:
+    - name (项目名称)
+    - specification (规格型号)
+    - unit (单位)
+    - quantity (数量)
+    - unit_price (单价)
+    - amount (金额)
+    - tax_rate (税率) - as decimal, e.g. 0.13 for 13%
+    - tax_amount (税额)
+
+    OTHER FIELDS:
+    - check_code (校验码): Verification code if visible
+    - remarks (备注): Any remarks or notes
+
+    Return a JSON object with this exact structure:
+    {
+      "invoice_code": "string",
+      "invoice_number": "string",
+      "invoice_type": "string",
+      "invoice_date": "YYYY-MM-DD",
+      "total_amount": number,
+      "tax_amount": number,
+      "amount_without_tax": number,
+      "seller_name": "string",
+      "seller_tax_id": "string",
+      "seller_address": "string",
+      "seller_bank": "string",
+      "buyer_name": "string",
+      "buyer_tax_id": "string",
+      "buyer_address": "string",
+      "buyer_bank": "string",
+      "items": [{"name": "string", "specification": "string", "unit": "string", "quantity": number, "unit_price": number, "amount": number, "tax_rate": number, "tax_amount": number}],
+      "check_code": "string",
+      "remarks": "string"
+    }
+
+    IMPORTANT:
+    - Extract EXACTLY what you see. Do not guess or make up values.
+    - For amounts, use numbers without currency symbols.
+    - If a field is not visible or unclear, use empty string "" or 0.

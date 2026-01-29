@@ -138,7 +138,7 @@ func ProvideLarkClients(cfg *LarkConfig, storageCfg *StorageConfig, logger *zap.
 
 // ProvideAIAuditor creates the AI auditor using OpenAI.
 // Returns port.AIAuditor implementation.
-func ProvideAIAuditor(cfg *OpenAIConfig, logger *zap.Logger) (port.AIAuditor, error) {
+func ProvideAIAuditor(cfg *OpenAIConfig, promptsPath string, logger *zap.Logger) (port.AIAuditor, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("openai config is required")
 	}
@@ -146,12 +146,18 @@ func ProvideAIAuditor(cfg *OpenAIConfig, logger *zap.Logger) (port.AIAuditor, er
 		return nil, fmt.Errorf("logger is required")
 	}
 
+	// Load prompts from YAML file
+	prompts, err := openai.LoadPrompts(promptsPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load prompts: %w", err)
+	}
+
 	auditor := openai.NewAuditor(
 		cfg.APIKey,
 		cfg.Model,
-		cfg.Temperature,
 		cfg.Policies,
 		cfg.PriceDeviationThreshold,
+		prompts,
 		logger,
 	)
 

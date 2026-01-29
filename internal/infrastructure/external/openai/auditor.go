@@ -17,19 +17,19 @@ type Auditor struct {
 	client             *openai.Client
 	policies           map[string]interface{}
 	model              string
-	temperature        float32
 	deviationThreshold float64
+	prompts            *PromptConfig
 	logger             *zap.Logger
 }
 
 // NewAuditor creates a new OpenAI auditor
-func NewAuditor(apiKey, model string, temperature float32, policies map[string]interface{}, deviationThreshold float64, logger *zap.Logger) *Auditor {
+func NewAuditor(apiKey, model string, policies map[string]interface{}, deviationThreshold float64, prompts *PromptConfig, logger *zap.Logger) *Auditor {
 	return &Auditor{
 		client:             openai.NewClient(apiKey),
 		policies:           policies,
 		model:              model,
-		temperature:        temperature,
 		deviationThreshold: deviationThreshold,
+		prompts:            prompts,
 		logger:             logger,
 	}
 }
@@ -40,15 +40,20 @@ func (a *Auditor) AuditPolicy(ctx context.Context, item *entity.ReimbursementIte
 		zap.Int64("item_id", item.ID),
 		zap.String("item_type", item.ItemType))
 
-	prompt := a.buildPolicyPrompt(item, invoiceData)
+	prompt, err := a.buildPolicyPrompt(item, invoiceData)
+	if err != nil {
+		a.logger.Error("Failed to build policy prompt", zap.Error(err))
+		return nil, fmt.Errorf("failed to build policy prompt: %w", err)
+	}
 
 	req := openai.ChatCompletionRequest{
 		Model:       a.model,
-		Temperature: a.temperature,
+		Temperature: a.prompts.PolicyAudit.Temperature,
+		MaxTokens:   a.prompts.PolicyAudit.MaxTokens,
 		Messages: []openai.ChatCompletionMessage{
 			{
 				Role:    openai.ChatMessageRoleSystem,
-				Content: "You are a financial compliance auditor for a Chinese enterprise. Evaluate reimbursement items against company policies. Always respond with valid JSON wrapped in ```json and ``` markers.",
+				Content: a.prompts.PolicyAudit.System,
 			},
 			{
 				Role:    openai.ChatMessageRoleUser,
@@ -99,15 +104,20 @@ func (a *Auditor) AuditPrice(ctx context.Context, item *entity.ReimbursementItem
 		zap.Int64("item_id", item.ID),
 		zap.Float64("amount", item.Amount))
 
-	prompt := a.buildPricePrompt(item, invoiceData)
+	prompt, err := a.buildPricePrompt(item, invoiceData)
+	if err != nil {
+		a.logger.Error("Failed to build price prompt", zap.Error(err))
+		return nil, fmt.Errorf("failed to build price prompt: %w", err)
+	}
 
 	resp, err := a.client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
 		Model:       a.model,
-		Temperature: a.temperature,
+		Temperature: a.prompts.PriceAudit.Temperature,
+		MaxTokens:   a.prompts.PriceAudit.MaxTokens,
 		Messages: []openai.ChatCompletionMessage{
 			{
 				Role:    openai.ChatMessageRoleSystem,
-				Content: "You are a market price analyst for business expenses in China. Estimate if expenses are reasonable based on market rates. Always respond with valid JSON.",
+				Content: a.prompts.PriceAudit.System,
 			},
 			{
 				Role:    openai.ChatMessageRoleUser,
@@ -164,28 +174,25 @@ func (a *Auditor) AuditPrice(ctx context.Context, item *entity.ReimbursementItem
 func (a *Auditor) ExtractInvoice(ctx context.Context, imageData []byte, mimeType string) (*port.InvoiceExtractionResult, error) {
 	a.logger.Info("Extracting invoice data with Vision API", zap.String("mime_type", mimeType))
 
-	// Build vision prompt
-	prompt := a.buildVisionPrompt()
-
 	// Encode image as base64
 	base64Img := encodeBase64(imageData)
 
 	// Build multi-modal message
 	resp, err := a.client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
 		Model:       a.model,
-		MaxTokens:   4096,
-		Temperature: 0.1,
+		MaxTokens:   a.prompts.InvoiceExtraction.MaxTokens,
+		Temperature: a.prompts.InvoiceExtraction.Temperature,
 		Messages: []openai.ChatCompletionMessage{
 			{
 				Role:    openai.ChatMessageRoleSystem,
-				Content: "You are an expert in reading and extracting data from Chinese invoices (发票). You have perfect accuracy in reading invoice codes, numbers, amounts, and all other fields. Always respond with valid JSON.",
+				Content: a.prompts.InvoiceExtraction.System,
 			},
 			{
 				Role: openai.ChatMessageRoleUser,
 				MultiContent: []openai.ChatMessagePart{
 					{
 						Type: openai.ChatMessagePartTypeText,
-						Text: prompt,
+						Text: a.prompts.InvoiceExtraction.UserTemplate,
 					},
 					{
 						Type: openai.ChatMessagePartTypeImageURL,
@@ -239,7 +246,7 @@ func (a *Auditor) ExtractInvoice(ctx context.Context, imageData []byte, mimeType
 }
 
 // buildPolicyPrompt builds the policy validation prompt
-func (a *Auditor) buildPolicyPrompt(item *entity.ReimbursementItem, invoiceData *port.InvoiceExtractionResult) string {
+func (a *Auditor) buildPolicyPrompt(item *entity.ReimbursementItem, invoiceData *port.InvoiceExtractionResult) (string, error) {
 	policiesJSON, _ := json.MarshalIndent(a.policies, "", "  ")
 
 	invoiceInfo := "No invoice data available"
@@ -248,154 +255,36 @@ func (a *Auditor) buildPolicyPrompt(item *entity.ReimbursementItem, invoiceData 
 			invoiceData.TotalAmount, invoiceData.SellerName, invoiceData.InvoiceDate)
 	}
 
-	prompt := fmt.Sprintf(`Evaluate this reimbursement item against company policies:
+	data := map[string]interface{}{
+		"Policies":    string(policiesJSON),
+		"ItemType":    item.ItemType,
+		"Description": item.Description,
+		"Amount":      item.Amount,
+		"Currency":    item.Currency,
+		"InvoiceInfo": invoiceInfo,
+	}
 
-**Company Policies:**
-%s
-
-**Reimbursement Item:**
-- Type: %s
-- Description: %s
-- Amount: %.2f %s
-
-**Invoice Information:**
-%s
-
-Please respond with ONLY a valid JSON object (no markdown, no explanation). The JSON must have this exact structure:
-{
-  "compliant": boolean,
-  "violations": [string array of violation descriptions],
-  "confidence": number between 0.0 and 1.0,
-  "reasoning": string explaining your assessment
-}
-
-Provide a detailed evaluation. If there are any policy violations, list them in the violations array. Set confidence to reflect your certainty in the assessment.`,
-		string(policiesJSON),
-		item.ItemType,
-		item.Description,
-		item.Amount,
-		item.Currency,
-		invoiceInfo,
-	)
-
-	return prompt
+	return renderTemplate(a.prompts.PolicyAudit.UserTemplate, data)
 }
 
 // buildPricePrompt builds the price benchmarking prompt
-func (a *Auditor) buildPricePrompt(item *entity.ReimbursementItem, invoiceData *port.InvoiceExtractionResult) string {
+func (a *Auditor) buildPricePrompt(item *entity.ReimbursementItem, invoiceData *port.InvoiceExtractionResult) (string, error) {
 	invoiceInfo := ""
 	if invoiceData != nil && invoiceData.Success {
 		invoiceInfo = fmt.Sprintf("\n- Invoice Amount: %.2f\n- Invoice Date: %s\n- Seller: %s",
 			invoiceData.TotalAmount, invoiceData.InvoiceDate, invoiceData.SellerName)
 	}
 
-	prompt := fmt.Sprintf(`Estimate if this business expense is reasonable based on typical market prices in China:
+	data := map[string]interface{}{
+		"ItemType":        item.ItemType,
+		"Description":     item.Description,
+		"Amount":          item.Amount,
+		"Currency":        item.Currency,
+		"InvoiceInfo":     invoiceInfo,
+		"SubmittedPrice":  item.Amount,
+	}
 
-**Expense Details:**
-- Category: %s
-- Description: %s
-- Submitted Amount: %.2f %s%s
-
-**Context:**
-Consider typical business expense patterns in China, regional price variations, and current market conditions.
-
-**Required Response Format (JSON):**
-{
-  "estimated_price_range": [min, max],
-  "submitted_price": float,
-  "deviation_percentage": float,
-  "reasonable": boolean,
-  "confidence": float (0.0 to 1.0),
-  "reasoning": string
-}
-
-Provide:
-1. estimated_price_range: [minimum, maximum] reasonable price range
-2. submitted_price: The amount being claimed (%.2f)
-3. deviation_percentage: Percentage deviation from typical price
-4. reasonable: Whether the price is within acceptable range
-5. confidence: Your confidence in this assessment (0.0-1.0)
-6. reasoning: Explanation of your assessment`,
-		item.ItemType,
-		item.Description,
-		item.Amount,
-		item.Currency,
-		invoiceInfo,
-		item.Amount,
-	)
-
-	return prompt
-}
-
-// buildVisionPrompt builds the prompt for Vision API extraction
-func (a *Auditor) buildVisionPrompt() string {
-	return `Carefully examine this Chinese invoice image (发票) and extract ALL information.
-
-This is a critical financial document. Please extract with 100% accuracy:
-
-REQUIRED FIELDS (发票基本信息):
-- invoice_code (发票代码): Usually 10 or 12 digits at the top
-- invoice_number (发票号码): Usually 8 digits
-- invoice_type (发票类型): 增值税专用发票, 增值税普通发票, 电子发票, etc.
-- invoice_date (开票日期): Date in YYYY-MM-DD format
-
-AMOUNT FIELDS (金额信息):
-- total_amount (价税合计): Total amount INCLUDING tax - this is the main amount
-- tax_amount (税额): Tax amount only
-- amount_without_tax (金额): Amount BEFORE tax
-
-SELLER INFORMATION (销售方信息):
-- seller_name (销售方名称): Company name
-- seller_tax_id (销售方税号): Tax registration number (15-20 chars)
-- seller_address (销售方地址电话)
-- seller_bank (销售方开户行及账号)
-
-BUYER INFORMATION (购买方信息):
-- buyer_name (购买方名称): Company name
-- buyer_tax_id (购买方税号): Tax registration number
-- buyer_address (购买方地址电话)
-- buyer_bank (购买方开户行及账号)
-
-LINE ITEMS (明细项目) - Extract ALL line items as an array:
-- name (项目名称)
-- specification (规格型号)
-- unit (单位)
-- quantity (数量)
-- unit_price (单价)
-- amount (金额)
-- tax_rate (税率) - as decimal, e.g. 0.13 for 13%
-- tax_amount (税额)
-
-OTHER FIELDS:
-- check_code (校验码): Verification code if visible
-- remarks (备注): Any remarks or notes
-
-Return a JSON object with this exact structure:
-{
-  "invoice_code": "string",
-  "invoice_number": "string",
-  "invoice_type": "string",
-  "invoice_date": "YYYY-MM-DD",
-  "total_amount": number,
-  "tax_amount": number,
-  "amount_without_tax": number,
-  "seller_name": "string",
-  "seller_tax_id": "string",
-  "seller_address": "string",
-  "seller_bank": "string",
-  "buyer_name": "string",
-  "buyer_tax_id": "string",
-  "buyer_address": "string",
-  "buyer_bank": "string",
-  "items": [{"name": "string", "specification": "string", "unit": "string", "quantity": number, "unit_price": number, "amount": number, "tax_rate": number, "tax_amount": number}],
-  "check_code": "string",
-  "remarks": "string"
-}
-
-IMPORTANT:
-- Extract EXACTLY what you see. Do not guess or make up values.
-- For amounts, use numbers without currency symbols.
-- If a field is not visible or unclear, use empty string "" or 0.`
+	return renderTemplate(a.prompts.PriceAudit.UserTemplate, data)
 }
 
 // toPolicyAuditResult converts entity.PolicyValidationResult to port.PolicyAuditResult
