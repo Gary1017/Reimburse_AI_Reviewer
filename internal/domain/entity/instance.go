@@ -12,9 +12,9 @@ type ApprovalInstance struct {
 	SubmissionTime  time.Time  `json:"submission_time"`
 	ApprovalTime    *time.Time `json:"approval_time,omitempty"`
 	FormData        string     `json:"form_data"`
-	AIAuditResult   string     `json:"ai_audit_result"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
+	// AIAuditResult has been moved to approval_tasks.result_data
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // ReimbursementItem represents a single expense item

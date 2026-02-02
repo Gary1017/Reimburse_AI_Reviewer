@@ -66,3 +66,27 @@ type NotificationMessageContent struct {
 	Violations   []string `json:"violations"`
 	InstanceLink string   `json:"instance_link"`
 }
+
+// ReviewNotification represents a notification record linked to an AI_REVIEW task.
+// There is a 1:1 relationship between ReviewNotification and an AI_REVIEW ApprovalTask.
+// Decision, confidence, and violations are read from the linked ApprovalTask.
+type ReviewNotification struct {
+	ID             int64  `json:"id"`
+	TaskID         int64  `json:"task_id"`
+	LarkInstanceID string `json:"lark_instance_id"`
+
+	Status        string `json:"status"`
+	ApproverCount int    `json:"approver_count"`
+
+	SentAt       *time.Time `json:"sent_at,omitempty"`
+	ErrorMessage string     `json:"error_message,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+}
+
+// ReviewNotification status constants
+const (
+	ReviewNotificationStatusPending = "PENDING"
+	ReviewNotificationStatusSent    = "SENT"
+	ReviewNotificationStatusFailed  = "FAILED"
+)

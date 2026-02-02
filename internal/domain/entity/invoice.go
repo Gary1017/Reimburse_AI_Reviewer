@@ -138,3 +138,29 @@ type CompletenessResult struct {
 	TotalMatchesSum bool     `json:"total_matches_sum"`
 	Reasoning       string   `json:"reasoning"`
 }
+
+// InvoiceV2 represents a Chinese invoice linked to invoice_list and attachment.
+// This is the new structure replacing Invoice for the refactored schema.
+// Each InvoiceV2 has a 1:1 relationship with an Attachment.
+type InvoiceV2 struct {
+	ID            int64 `json:"id"`
+	InvoiceListID int64 `json:"invoice_list_id"`
+	AttachmentID  int64 `json:"attachment_id"`
+	ItemID        int64 `json:"item_id"`
+
+	// Invoice identification (from GPT-4 extraction)
+	InvoiceCode   string `json:"invoice_code"`
+	InvoiceNumber string `json:"invoice_number"`
+	UniqueID      string `json:"unique_id"`
+
+	// Extracted data (GPT-4 Vision result)
+	InvoiceDate   *time.Time `json:"invoice_date,omitempty"`
+	InvoiceAmount float64    `json:"invoice_amount"`
+	SellerName    string     `json:"seller_name"`
+	SellerTaxID   string     `json:"seller_tax_id"`
+	BuyerName     string     `json:"buyer_name"`
+	BuyerTaxID    string     `json:"buyer_tax_id"`
+	ExtractedData string     `json:"extracted_data"`
+
+	CreatedAt time.Time `json:"created_at"`
+}
