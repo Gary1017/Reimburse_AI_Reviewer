@@ -265,3 +265,195 @@ func buildViolationsString(result *AuditResult) string {
 	}
 	return violations
 }
+
+// =============================================================================
+// NEW REVIEW NOTIFICATION SERVICE (Task-based)
+// =============================================================================
+
+// ReviewNotificationService manages notifications linked to AI_REVIEW tasks.
+// This is the new task-based notification service that replaces instance-based notifications.
+type ReviewNotificationService interface {
+	// NotifyTaskResult sends notification for a completed AI review task
+	NotifyTaskResult(ctx context.Context, taskID int64) error
+
+	// GetByTaskID retrieves notification by task ID
+	GetByTaskID(ctx context.Context, taskID int64) (*entity.ReviewNotification, error)
+}
+
+type reviewNotificationServiceImpl struct {
+	instanceRepo           port.InstanceRepository
+	taskRepo               port.ApprovalTaskRepository
+	reviewNotificationRepo port.ReviewNotificationRepository
+	larkClient             port.LarkClient
+	messageSender          port.LarkMessageSender
+	txManager              port.TransactionManager
+	logger                 Logger
+}
+
+// NewReviewNotificationService creates a new ReviewNotificationService
+func NewReviewNotificationService(
+	instanceRepo port.InstanceRepository,
+	taskRepo port.ApprovalTaskRepository,
+	reviewNotificationRepo port.ReviewNotificationRepository,
+	larkClient port.LarkClient,
+	messageSender port.LarkMessageSender,
+	txManager port.TransactionManager,
+	logger Logger,
+) ReviewNotificationService {
+	return &reviewNotificationServiceImpl{
+		instanceRepo:           instanceRepo,
+		taskRepo:               taskRepo,
+		reviewNotificationRepo: reviewNotificationRepo,
+		larkClient:             larkClient,
+		messageSender:          messageSender,
+		txManager:              txManager,
+		logger:                 logger,
+	}
+}
+
+// NotifyTaskResult sends notification for a completed AI review task.
+// Decision and confidence are read from the linked ApprovalTask.
+func (s *reviewNotificationServiceImpl) NotifyTaskResult(ctx context.Context, taskID int64) error {
+	s.logger.Info("Sending review notification for task", "task_id", taskID)
+
+	// Get the task
+	task, err := s.taskRepo.GetByID(ctx, taskID)
+	if err != nil {
+		s.logger.Error("Failed to get task", "error", err, "task_id", taskID)
+		return fmt.Errorf("get task: %w", err)
+	}
+	if task == nil {
+		return fmt.Errorf("task not found: %d", taskID)
+	}
+
+	// Verify task is an AI review task
+	if task.TaskType != entity.TaskTypeAIReview {
+		return fmt.Errorf("task is not AI review: %s", task.TaskType)
+	}
+
+	// Get instance
+	instance, err := s.instanceRepo.GetByID(ctx, task.InstanceID)
+	if err != nil {
+		s.logger.Error("Failed to get instance", "error", err, "instance_id", task.InstanceID)
+		return fmt.Errorf("get instance: %w", err)
+	}
+	if instance == nil {
+		return fmt.Errorf("instance not found: %d", task.InstanceID)
+	}
+
+	// Get applicant OpenID from Lark
+	detail, err := s.larkClient.GetInstanceDetail(ctx, instance.LarkInstanceID)
+	if err != nil {
+		s.logger.Error("Failed to get instance detail from Lark", "error", err, "instance_id", task.InstanceID)
+		return fmt.Errorf("get instance detail: %w", err)
+	}
+
+	// Build message from task result
+	message := s.buildTaskResultMessage(task)
+
+	// Create notification record (linked to task)
+	notification := &entity.ReviewNotification{
+		TaskID:         taskID,
+		LarkInstanceID: instance.LarkInstanceID,
+		Status:         entity.ReviewNotificationStatusPending,
+		ApproverCount:  0, // Will be updated if needed
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
+	}
+
+	// Send message and save notification in transaction
+	err = s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
+		// Check if notification already exists (idempotency)
+		existing, err := s.reviewNotificationRepo.GetByTaskID(txCtx, taskID)
+		if err != nil {
+			return fmt.Errorf("check existing notification: %w", err)
+		}
+		if existing != nil {
+			s.logger.Info("Notification already exists for task",
+				"task_id", taskID,
+				"notification_id", existing.ID)
+			notification = existing
+			// If already sent, skip
+			if existing.Status == entity.ReviewNotificationStatusSent {
+				return nil
+			}
+		} else {
+			// Save notification record
+			if err := s.reviewNotificationRepo.Create(txCtx, notification); err != nil {
+				return fmt.Errorf("create notification: %w", err)
+			}
+		}
+
+		// Send message via Lark
+		if err := s.messageSender.SendMessage(txCtx, detail.OpenID, message); err != nil {
+			// Mark as failed
+			s.reviewNotificationRepo.UpdateStatus(txCtx, notification.ID, entity.ReviewNotificationStatusFailed, err.Error())
+			return fmt.Errorf("send message: %w", err)
+		}
+
+		// Mark as sent
+		if err := s.reviewNotificationRepo.MarkSent(txCtx, notification.ID); err != nil {
+			return fmt.Errorf("mark notification sent: %w", err)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		s.logger.Error("Failed to send review notification", "error", err, "task_id", taskID)
+		return err
+	}
+
+	s.logger.Info("Review notification sent successfully",
+		"task_id", taskID,
+		"notification_id", notification.ID,
+		"open_id", detail.OpenID,
+	)
+
+	return nil
+}
+
+// GetByTaskID retrieves notification by task ID.
+func (s *reviewNotificationServiceImpl) GetByTaskID(ctx context.Context, taskID int64) (*entity.ReviewNotification, error) {
+	notification, err := s.reviewNotificationRepo.GetByTaskID(ctx, taskID)
+	if err != nil {
+		s.logger.Error("Failed to get notification by task ID",
+			"error", err,
+			"task_id", taskID)
+		return nil, fmt.Errorf("get notification: %w", err)
+	}
+	return notification, nil
+}
+
+// buildTaskResultMessage builds a human-readable message from task result.
+// Decision and confidence are read from the task, not duplicated in notification.
+func (s *reviewNotificationServiceImpl) buildTaskResultMessage(task *entity.ApprovalTask) string {
+	confidence := 0.0
+	if task.Confidence != nil {
+		confidence = *task.Confidence
+	}
+
+	switch task.Decision {
+	case entity.DecisionPass, entity.DecisionApproved:
+		return fmt.Sprintf(
+			"您的报销申请已通过AI审核！\n\n审核结果: 通过\n置信度: %.2f%%\n\n您的申请将继续进入审批流程。",
+			confidence*100,
+		)
+	case entity.DecisionNeedsReview:
+		return fmt.Sprintf(
+			"您的报销申请需要人工复核。\n\n审核结果: 需人工复核\n置信度: %.2f%%\n\n请等待审批人员进一步审核。",
+			confidence*100,
+		)
+	default:
+		// Fail or Rejected
+		violationsMsg := ""
+		if task.Violations != "" {
+			violationsMsg = "\n\n问题说明:\n" + task.Violations
+		}
+		return fmt.Sprintf(
+			"您的报销申请未通过AI审核。\n\n审核结果: 未通过\n置信度: %.2f%%%s\n\n请修改后重新提交申请。",
+			confidence*100,
+			violationsMsg,
+		)
+	}
+}

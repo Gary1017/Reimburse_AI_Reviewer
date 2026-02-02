@@ -62,6 +62,7 @@ type Container struct {
 
 // RepositoryBundle groups all repositories for convenient access.
 type RepositoryBundle struct {
+	// Existing repositories
 	Instance     port.InstanceRepository
 	Item         port.ItemRepository
 	Attachment   port.AttachmentRepository
@@ -69,14 +70,26 @@ type RepositoryBundle struct {
 	Invoice      port.InvoiceRepository
 	Voucher      port.VoucherRepository
 	Notification port.NotificationRepository
+
+	// New repositories for schema refactoring
+	InvoiceList        port.InvoiceListRepository
+	InvoiceV2          port.InvoiceV2Repository
+	Task               port.ApprovalTaskRepository
+	ReviewNotification port.ReviewNotificationRepository
 }
 
 // ServiceBundle groups all application services.
 type ServiceBundle struct {
+	// Existing services
 	Approval     service.ApprovalService
 	Audit        service.AuditService
 	Voucher      service.VoucherService
 	Notification service.NotificationService
+
+	// New services for schema refactoring
+	InvoiceList        service.InvoiceListService
+	Task               service.TaskService
+	ReviewNotification service.ReviewNotificationService
 }
 
 // HealthStatus represents the health of all components.

@@ -92,6 +92,7 @@ func ProvideRepositories(sqlDB *sql.DB, logger *zap.Logger) (*RepositoryBundle, 
 	}
 
 	return &RepositoryBundle{
+		// Existing repositories
 		Instance:     repository.NewInstanceRepository(sqlDB, logger),
 		Item:         repository.NewItemRepository(sqlDB, logger),
 		Attachment:   repository.NewAttachmentRepository(sqlDB, logger),
@@ -99,6 +100,12 @@ func ProvideRepositories(sqlDB *sql.DB, logger *zap.Logger) (*RepositoryBundle, 
 		Invoice:      repository.NewInvoiceRepository(sqlDB, logger),
 		Voucher:      repository.NewVoucherRepository(sqlDB, logger),
 		Notification: repository.NewNotificationRepository(sqlDB, logger),
+
+		// New repositories for schema refactoring
+		InvoiceList:        repository.NewInvoiceListRepository(sqlDB, logger),
+		InvoiceV2:          repository.NewInvoiceV2Repository(sqlDB, logger),
+		Task:               repository.NewApprovalTaskRepository(sqlDB, logger),
+		ReviewNotification: repository.NewReviewNotificationRepository(sqlDB, logger),
 	}, nil
 }
 
@@ -213,6 +220,7 @@ func ProvideServices(deps *ServiceDeps) (*ServiceBundle, error) {
 	serviceLogger := &zapLoggerAdapter{logger: deps.Logger}
 
 	return &ServiceBundle{
+		// Existing services
 		Approval: service.NewApprovalService(
 			deps.Repos.Instance,
 			deps.Repos.Item,
@@ -240,6 +248,29 @@ func ProvideServices(deps *ServiceDeps) (*ServiceBundle, error) {
 		Notification: service.NewNotificationService(
 			deps.Repos.Instance,
 			deps.Repos.Notification,
+			deps.LarkClient,
+			deps.Messenger,
+			deps.TxManager,
+			serviceLogger,
+		),
+
+		// New services for schema refactoring
+		InvoiceList: service.NewInvoiceListService(
+			deps.Repos.InvoiceList,
+			deps.Repos.InvoiceV2,
+			deps.TxManager,
+			serviceLogger,
+		),
+		Task: service.NewTaskService(
+			deps.Repos.Task,
+			deps.Repos.ReviewNotification,
+			deps.TxManager,
+			serviceLogger,
+		),
+		ReviewNotification: service.NewReviewNotificationService(
+			deps.Repos.Instance,
+			deps.Repos.Task,
+			deps.Repos.ReviewNotification,
 			deps.LarkClient,
 			deps.Messenger,
 			deps.TxManager,
