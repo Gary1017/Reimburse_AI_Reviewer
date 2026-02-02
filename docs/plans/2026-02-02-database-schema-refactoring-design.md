@@ -17,10 +17,27 @@ Refactor the database schema to:
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
 | Item list structure | Direct relationship (no intermediate table) | Current `reimbursement_items` → `approval_instances` is sufficient |
-| Invoice list structure | Instance-level (Option B) | 1:1 with instance, invoices link back to items via `item_id` |
+| Invoice list structure | Instance-level | 1:1 with instance for aggregation (total count, amount) |
+| Attachment = Invoice | Separate tables with 1:1 relationship | `attachments` tracks download, `invoices` tracks extraction |
+| Item : Attachment : Invoice | 1:1:1 chain | Each item has exactly one attachment (invoice file) |
 | Task model | Unified (Option A) | AI review is "just another task" with `is_ai_decision` flag |
 | Task + Result | Merged (Option B) | `approval_tasks` contains both definition and result |
-| Item-Invoice constraint | Nullable with TODO | Business logic validates, DB allows NULL for async workflow |
+
+### Key Relationship Clarification
+
+**In this application, every attachment IS an invoice.** The relationship chain is:
+
+```
+reimbursement_items ──1:1──► attachments ──1:1──► invoices_v2
+        │                    (download)         (extraction)
+        │                                            │
+        └────────────────────────────────────────────┘
+                    (item_id for convenience)
+```
+
+- `attachments`: Tracks file download status (PENDING → COMPLETED)
+- `invoices_v2`: Tracks GPT-4 extraction result (invoice data)
+- `invoice_lists`: Aggregates all invoices at instance level
 
 ## 3. New Tables
 
@@ -44,45 +61,45 @@ CREATE INDEX idx_invoice_lists_status ON invoice_lists(status);
 ```
 
 ### 3.2 invoices_v2
-Individual invoices linked to invoice_list AND reimbursement_item.
+Individual invoices linked to invoice_list, attachment, AND reimbursement_item.
+
+**Relationship**: Each invoice corresponds to exactly one attachment (1:1).
 
 ```sql
 CREATE TABLE invoices_v2 (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     invoice_list_id INTEGER NOT NULL,
-    item_id INTEGER,
-    -- TODO: Business rule - each reimbursement_item should have exactly one
-    -- corresponding invoice. Validated by application logic in
-    -- internal/application/service/invoice_service.go
+    attachment_id INTEGER UNIQUE NOT NULL,  -- 1:1 with attachments
+    item_id INTEGER,                         -- Derived from attachment, for convenience
 
     -- Invoice identification (from GPT-4 extraction)
     invoice_code TEXT NOT NULL,
     invoice_number TEXT NOT NULL,
     unique_id TEXT UNIQUE NOT NULL,
 
-    -- File references
-    file_token TEXT,
-    file_path TEXT,
-
-    -- Extracted data
+    -- Extracted data (GPT-4 Vision result)
     invoice_date DATE,
     invoice_amount DECIMAL(12,2),
     seller_name TEXT,
     seller_tax_id TEXT,
     buyer_name TEXT,
     buyer_tax_id TEXT,
-    extracted_data TEXT,
+    extracted_data TEXT,                     -- Full JSON from GPT-4
 
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 
     FOREIGN KEY (invoice_list_id) REFERENCES invoice_lists(id) ON DELETE CASCADE,
+    FOREIGN KEY (attachment_id) REFERENCES attachments(id) ON DELETE CASCADE,
     FOREIGN KEY (item_id) REFERENCES reimbursement_items(id) ON DELETE SET NULL
 );
 
 CREATE INDEX idx_invoices_v2_list ON invoices_v2(invoice_list_id);
+CREATE INDEX idx_invoices_v2_attachment ON invoices_v2(attachment_id);
 CREATE INDEX idx_invoices_v2_item ON invoices_v2(item_id);
 CREATE INDEX idx_invoices_v2_unique ON invoices_v2(unique_id);
 ```
+
+**Note**: `file_token` and `file_path` removed - these are stored in `attachments` table.
 
 ### 3.3 approval_tasks
 Unified task table (definition + result) aligned with Lark's task_list.
@@ -169,7 +186,16 @@ CREATE INDEX idx_review_notifications_status ON review_notifications(status);
 - Remove `ai_audit_result` column (moved to `approval_tasks.result_data`)
 
 ### 4.2 reimbursement_items
-- Remove `invoice_id` column (invoices now link via `item_id` in `invoices_v2`)
+- Remove `invoice_id` column (invoices now link via `attachment_id` → `item_id`)
+
+### 4.3 attachments
+- Add UNIQUE constraint on `item_id` (1:1 relationship with reimbursement_items)
+- Each reimbursement item has exactly ONE attachment (the invoice file)
+
+```sql
+-- Migration to enforce 1:1 relationship
+CREATE UNIQUE INDEX idx_attachments_item_unique ON attachments(item_id);
+```
 
 ## 5. Deprecated Tables
 
@@ -187,14 +213,16 @@ approval_instances (1) ──────┬────── (1) invoice_lists
                              │              │
                              │              └──── (N) invoices_v2
                              │                         │
-                             │                         │ item_id FK
+                             │                         │ attachment_id FK (1:1)
                              │                         ▼
-                             ├────── (N) reimbursement_items
-                             │                         ▲
-                             │                         │ TODO: Business rule
-                             │                         │ (1 item : 1 invoice)
+                             │              ┌──── attachments (1:1) ────┐
+                             │              │     (download tracking)   │
+                             │              │                           │
+                             │              │ item_id FK (1:1)          │
+                             │              ▼                           │
+                             ├────── (N) reimbursement_items ◄──────────┘
+                             │              (expense line items)
                              │
-                             ├────── (N) attachments
                              │
                              ├────── (N) approval_tasks ◄─────┐
                              │       (definition + result)    │
@@ -205,6 +233,10 @@ approval_instances (1) ──────┬────── (1) invoice_lists
                              ├────── (1) generated_vouchers
                              │
                              └────── system_config (standalone)
+
+Relationship Chain (1:1:1):
+  reimbursement_items ──1:1──► attachments ──1:1──► invoices_v2
+       (expense)           (file download)      (extracted data)
 ```
 
 ## 7. Lark API Alignment

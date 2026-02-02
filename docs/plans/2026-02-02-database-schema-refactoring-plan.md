@@ -20,8 +20,16 @@
 ### Task 1.2: Create Invoice V2 Migration
 **File**: `migrations/010_add_invoices_v2.sql`
 - [ ] Create `invoices_v2` table with all columns
-- [ ] Add TODO comment for business rule validation
-- [ ] Create indices for `invoice_list_id`, `item_id`, `unique_id`
+- [ ] Add `attachment_id` FK with UNIQUE constraint (1:1 with attachments)
+- [ ] Add `item_id` FK for convenience (derived from attachment)
+- [ ] Create indices for `invoice_list_id`, `attachment_id`, `item_id`, `unique_id`
+
+**Measurable**: Migration file exists and passes `make migrate`
+
+### Task 1.2b: Add UNIQUE Constraint to Attachments
+**File**: `migrations/010b_attachments_unique_item.sql`
+- [ ] Add UNIQUE index on `attachments.item_id` (1:1 with reimbursement_items)
+- [ ] Each item has exactly one attachment (the invoice file)
 
 **Measurable**: Migration file exists and passes `make migrate`
 
@@ -68,7 +76,10 @@
 ### Task 2.2: Update Invoice Entity
 **File**: `internal/domain/entity/invoice.go`
 - [ ] Create `InvoiceV2` struct (or update existing `Invoice`)
-- [ ] Add `InvoiceListID` and `ItemID` fields
+- [ ] Add `InvoiceListID`, `AttachmentID`, and `ItemID` fields
+- [ ] `AttachmentID` is required (1:1 relationship)
+- [ ] `ItemID` is for convenience (derived from attachment)
+- [ ] Remove `file_token`, `file_path` (now in attachments table)
 - [ ] Keep backward-compatible `Invoice` if needed for migration
 
 **Measurable**: File compiles, `go build ./internal/domain/...` passes
