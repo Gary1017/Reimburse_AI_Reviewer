@@ -133,9 +133,9 @@ func (s *auditServiceImpl) AuditInstance(ctx context.Context, instanceID int64) 
 		"items_audited", len(items),
 	)
 
-	// Update instance with audit result
-	instance.AIAuditResult = fmt.Sprintf("pass=%v, confidence=%.2f", overallPass, avgConfidence)
-	// Note: In production, update via repository
+	// Note: AIAuditResult is now stored in approval_tasks.result_data
+	// The caller should create/update an ApprovalTask with the audit result
+	_ = instance // Avoid unused variable warning
 
 	return result, nil
 }

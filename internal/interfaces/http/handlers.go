@@ -57,9 +57,9 @@ type InstanceResponse struct {
 	Department      string  `json:"department,omitempty"`
 	SubmissionTime  string  `json:"submission_time"`
 	ApprovalTime    *string `json:"approval_time,omitempty"`
-	AIAuditResult   string  `json:"ai_audit_result,omitempty"`
-	CreatedAt       string  `json:"created_at"`
-	UpdatedAt       string  `json:"updated_at"`
+	// AIAuditResult has been moved to approval_tasks.result_data
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
 }
 
 // AuditResponse represents the audit result in API responses
@@ -280,7 +280,6 @@ func toInstanceResponse(instance *entity.ApprovalInstance) InstanceResponse {
 		ApplicantUserID: instance.ApplicantUserID,
 		Department:      instance.Department,
 		SubmissionTime:  instance.SubmissionTime.Format(time.RFC3339),
-		AIAuditResult:   instance.AIAuditResult,
 		CreatedAt:       instance.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:       instance.UpdatedAt.Format(time.RFC3339),
 	}

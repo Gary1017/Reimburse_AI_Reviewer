@@ -30,8 +30,8 @@ func (r *InstanceRepository) Create(ctx context.Context, instance *entity.Approv
 	query := `
 		INSERT INTO approval_instances (
 			lark_instance_id, status, applicant_user_id, department,
-			submission_time, form_data, ai_audit_result
-		) VALUES (?, ?, ?, ?, ?, ?, ?)
+			submission_time, form_data
+		) VALUES (?, ?, ?, ?, ?, ?)
 	`
 
 	result, err := r.getExecutor(ctx).ExecContext(ctx, query,
@@ -41,7 +41,6 @@ func (r *InstanceRepository) Create(ctx context.Context, instance *entity.Approv
 		instance.Department,
 		instance.SubmissionTime,
 		instance.FormData,
-		instance.AIAuditResult,
 	)
 	if err != nil {
 		r.logger.Error("Failed to create instance", zap.Error(err))
@@ -61,7 +60,7 @@ func (r *InstanceRepository) Create(ctx context.Context, instance *entity.Approv
 func (r *InstanceRepository) GetByID(ctx context.Context, id int64) (*entity.ApprovalInstance, error) {
 	query := `
 		SELECT id, lark_instance_id, status, applicant_user_id, department,
-			submission_time, approval_time, form_data, ai_audit_result,
+			submission_time, approval_time, form_data,
 			created_at, updated_at
 		FROM approval_instances
 		WHERE id = ?
@@ -79,7 +78,6 @@ func (r *InstanceRepository) GetByID(ctx context.Context, id int64) (*entity.App
 		&instance.SubmissionTime,
 		&approvalTime,
 		&instance.FormData,
-		&instance.AIAuditResult,
 		&instance.CreatedAt,
 		&instance.UpdatedAt,
 	)
@@ -103,7 +101,7 @@ func (r *InstanceRepository) GetByID(ctx context.Context, id int64) (*entity.App
 func (r *InstanceRepository) GetByLarkInstanceID(ctx context.Context, larkID string) (*entity.ApprovalInstance, error) {
 	query := `
 		SELECT id, lark_instance_id, status, applicant_user_id, department,
-			submission_time, approval_time, form_data, ai_audit_result,
+			submission_time, approval_time, form_data,
 			created_at, updated_at
 		FROM approval_instances
 		WHERE lark_instance_id = ?
@@ -121,7 +119,6 @@ func (r *InstanceRepository) GetByLarkInstanceID(ctx context.Context, larkID str
 		&instance.SubmissionTime,
 		&approvalTime,
 		&instance.FormData,
-		&instance.AIAuditResult,
 		&instance.CreatedAt,
 		&instance.UpdatedAt,
 	)
@@ -171,7 +168,7 @@ func (r *InstanceRepository) SetApprovalTime(ctx context.Context, id int64, t ti
 func (r *InstanceRepository) List(ctx context.Context, limit, offset int) ([]*entity.ApprovalInstance, error) {
 	query := `
 		SELECT id, lark_instance_id, status, applicant_user_id, department,
-			submission_time, approval_time, form_data, ai_audit_result,
+			submission_time, approval_time, form_data,
 			created_at, updated_at
 		FROM approval_instances
 		ORDER BY created_at DESC
@@ -199,7 +196,6 @@ func (r *InstanceRepository) List(ctx context.Context, limit, offset int) ([]*en
 			&instance.SubmissionTime,
 			&approvalTime,
 			&instance.FormData,
-			&instance.AIAuditResult,
 			&instance.CreatedAt,
 			&instance.UpdatedAt,
 		)
