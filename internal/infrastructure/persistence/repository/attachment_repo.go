@@ -30,8 +30,8 @@ func (r *AttachmentRepository) Create(ctx context.Context, att *entity.Attachmen
 	query := `
 		INSERT INTO attachments (
 			item_id, instance_id, file_name, url, file_path, file_size, mime_type,
-			download_status, error_message, downloaded_at, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			file_type, download_status, error_message, downloaded_at, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	now := time.Now()
@@ -39,6 +39,12 @@ func (r *AttachmentRepository) Create(ctx context.Context, att *entity.Attachmen
 		att.CreatedAt = now
 	} else {
 		now = att.CreatedAt
+	}
+
+	// Default to INVOICE if not specified
+	fileType := att.FileType
+	if fileType == "" {
+		fileType = entity.FileTypeInvoice
 	}
 
 	result, err := r.getExecutor(ctx).ExecContext(ctx, query,
@@ -49,6 +55,7 @@ func (r *AttachmentRepository) Create(ctx context.Context, att *entity.Attachmen
 		att.FilePath,
 		att.FileSize,
 		att.MimeType,
+		fileType,
 		att.DownloadStatus,
 		att.ErrorMessage,
 		att.DownloadedAt,
@@ -72,6 +79,7 @@ func (r *AttachmentRepository) Create(ctx context.Context, att *entity.Attachmen
 func (r *AttachmentRepository) GetByID(ctx context.Context, id int64) (*entity.Attachment, error) {
 	query := `
 		SELECT id, item_id, instance_id, file_name, url, file_path, file_size, mime_type,
+			COALESCE(file_type, 'INVOICE') as file_type,
 			download_status, error_message, downloaded_at, created_at
 		FROM attachments
 		WHERE id = ?
@@ -91,6 +99,7 @@ func (r *AttachmentRepository) GetByID(ctx context.Context, id int64) (*entity.A
 		&att.FilePath,
 		&att.FileSize,
 		&att.MimeType,
+		&att.FileType,
 		&att.DownloadStatus,
 		&errorMsg,
 		&downloadedAt,
@@ -122,6 +131,7 @@ func (r *AttachmentRepository) GetByID(ctx context.Context, id int64) (*entity.A
 func (r *AttachmentRepository) GetByInstanceID(ctx context.Context, instanceID int64) ([]*entity.Attachment, error) {
 	query := `
 		SELECT id, item_id, instance_id, file_name, url, file_path, file_size, mime_type,
+			COALESCE(file_type, 'INVOICE') as file_type,
 			download_status, error_message, downloaded_at, created_at
 		FROM attachments
 		WHERE instance_id = ?
@@ -152,6 +162,7 @@ func (r *AttachmentRepository) GetByInstanceID(ctx context.Context, instanceID i
 			&att.FilePath,
 			&att.FileSize,
 			&att.MimeType,
+			&att.FileType,
 			&att.DownloadStatus,
 			&errorMsg,
 			&downloadedAt,
@@ -181,6 +192,7 @@ func (r *AttachmentRepository) GetByInstanceID(ctx context.Context, instanceID i
 func (r *AttachmentRepository) GetPending(ctx context.Context, limit int) ([]*entity.Attachment, error) {
 	query := `
 		SELECT id, item_id, instance_id, file_name, url, file_path, file_size, mime_type,
+			COALESCE(file_type, 'INVOICE') as file_type,
 			download_status, error_message, downloaded_at, created_at
 		FROM attachments
 		WHERE download_status = 'PENDING'
@@ -211,6 +223,7 @@ func (r *AttachmentRepository) GetPending(ctx context.Context, limit int) ([]*en
 			&att.FilePath,
 			&att.FileSize,
 			&att.MimeType,
+			&att.FileType,
 			&att.DownloadStatus,
 			&errorMsg,
 			&downloadedAt,
