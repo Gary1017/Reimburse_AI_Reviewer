@@ -5,11 +5,16 @@ import "time"
 // ApprovalTask represents a unified task in the approval workflow.
 // It combines task definition and result, aligned with Lark's task_list structure.
 // AI review is treated as "just another task" with IsAIDecision flag.
+//
+// Governance: All tasks (including AI review) must have an assignee for accountability.
+// For AI tasks, the assignee is the person configured as AI_APPROVER_OPEN_ID who is
+// accountable for AI decisions. This satisfies Lark's requirement that all decisions
+// must be attributable to a physical person.
 type ApprovalTask struct {
 	ID         int64 `json:"id"`
 	InstanceID int64 `json:"instance_id"`
 
-	// Lark task_list mapping (NULL for AI-generated tasks)
+	// Lark task_list mapping (NULL for AI-generated tasks, but AI tasks still have assignee)
 	LarkTaskID string `json:"lark_task_id,omitempty"`
 
 	// Task type and workflow position
@@ -43,6 +48,9 @@ type ApprovalTask struct {
 	ResultData  string   `json:"result_data,omitempty"`
 	Violations  string   `json:"violations,omitempty"`
 	CompletedBy string   `json:"completed_by,omitempty"`
+
+	// Notification tracking (for AI review tasks)
+	NotificationSentAt *time.Time `json:"notification_sent_at,omitempty"`
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`

@@ -28,11 +28,11 @@ func NewInvoiceV2Repository(db *sql.DB, logger *zap.Logger) port.InvoiceV2Reposi
 func (r *InvoiceV2Repository) Create(ctx context.Context, invoice *entity.InvoiceV2) error {
 	query := `
 		INSERT INTO invoices_v2 (
-			invoice_list_id, attachment_id, item_id, instance_id,
+			instance_id, attachment_id, item_id,
 			invoice_code, invoice_number, unique_id,
 			invoice_date, invoice_amount, invoice_amount_cents, seller_name, seller_tax_id,
 			buyer_name, buyer_tax_id, extracted_data
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	// Handle nullable invoice_date
@@ -43,10 +43,9 @@ func (r *InvoiceV2Repository) Create(ctx context.Context, invoice *entity.Invoic
 
 	// Write to both amount columns for backwards compatibility
 	result, err := r.getExecutor(ctx).ExecContext(ctx, query,
-		invoice.InvoiceListID,
+		invoice.InstanceID,
 		invoice.AttachmentID,
 		invoice.ItemID,
-		invoice.InstanceID, // Redundant for query efficiency
 		invoice.InvoiceCode,
 		invoice.InvoiceNumber,
 		invoice.UniqueID,
@@ -61,7 +60,7 @@ func (r *InvoiceV2Repository) Create(ctx context.Context, invoice *entity.Invoic
 	)
 	if err != nil {
 		r.logger.Error("Failed to create invoice v2",
-			zap.Int64("invoice_list_id", invoice.InvoiceListID),
+			zap.Int64("instance_id", invoice.InstanceID),
 			zap.Int64("attachment_id", invoice.AttachmentID),
 			zap.Error(err))
 		return fmt.Errorf("failed to create invoice v2: %w", err)
@@ -79,7 +78,7 @@ func (r *InvoiceV2Repository) Create(ctx context.Context, invoice *entity.Invoic
 // GetByID retrieves an invoice by its ID
 func (r *InvoiceV2Repository) GetByID(ctx context.Context, id int64) (*entity.InvoiceV2, error) {
 	query := `
-		SELECT id, invoice_list_id, attachment_id, item_id, instance_id,
+		SELECT id, instance_id, attachment_id, item_id,
 			invoice_code, invoice_number, unique_id,
 			invoice_date,
 			COALESCE(invoice_amount_cents, CAST(invoice_amount * 100 AS INTEGER)) as invoice_amount_cents,
@@ -106,7 +105,7 @@ func (r *InvoiceV2Repository) GetByID(ctx context.Context, id int64) (*entity.In
 // GetByAttachmentID retrieves invoice by attachment ID (1:1 relationship)
 func (r *InvoiceV2Repository) GetByAttachmentID(ctx context.Context, attachmentID int64) (*entity.InvoiceV2, error) {
 	query := `
-		SELECT id, invoice_list_id, attachment_id, item_id, instance_id,
+		SELECT id, instance_id, attachment_id, item_id,
 			invoice_code, invoice_number, unique_id,
 			invoice_date,
 			COALESCE(invoice_amount_cents, CAST(invoice_amount * 100 AS INTEGER)) as invoice_amount_cents,
@@ -133,7 +132,7 @@ func (r *InvoiceV2Repository) GetByAttachmentID(ctx context.Context, attachmentI
 // GetByItemID retrieves invoice by item ID
 func (r *InvoiceV2Repository) GetByItemID(ctx context.Context, itemID int64) (*entity.InvoiceV2, error) {
 	query := `
-		SELECT id, invoice_list_id, attachment_id, item_id, instance_id,
+		SELECT id, instance_id, attachment_id, item_id,
 			invoice_code, invoice_number, unique_id,
 			invoice_date,
 			COALESCE(invoice_amount_cents, CAST(invoice_amount * 100 AS INTEGER)) as invoice_amount_cents,
@@ -157,36 +156,10 @@ func (r *InvoiceV2Repository) GetByItemID(ctx context.Context, itemID int64) (*e
 	return invoice, nil
 }
 
-// GetByInvoiceListID retrieves all invoices in an invoice list
-func (r *InvoiceV2Repository) GetByInvoiceListID(ctx context.Context, invoiceListID int64) ([]*entity.InvoiceV2, error) {
-	query := `
-		SELECT id, invoice_list_id, attachment_id, item_id, instance_id,
-			invoice_code, invoice_number, unique_id,
-			invoice_date,
-			COALESCE(invoice_amount_cents, CAST(invoice_amount * 100 AS INTEGER)) as invoice_amount_cents,
-			invoice_amount, seller_name, seller_tax_id,
-			buyer_name, buyer_tax_id, extracted_data, created_at
-		FROM invoices_v2
-		WHERE invoice_list_id = ?
-		ORDER BY id
-	`
-
-	rows, err := r.getExecutor(ctx).QueryContext(ctx, query, invoiceListID)
-	if err != nil {
-		r.logger.Error("Failed to get invoices v2 by invoice list ID",
-			zap.Int64("invoice_list_id", invoiceListID),
-			zap.Error(err))
-		return nil, fmt.Errorf("failed to get invoices v2: %w", err)
-	}
-	defer rows.Close()
-
-	return r.scanInvoices(rows)
-}
-
-// GetByInstanceID retrieves all invoices for an instance (uses redundant instance_id for efficiency)
+// GetByInstanceID retrieves all invoices for an instance
 func (r *InvoiceV2Repository) GetByInstanceID(ctx context.Context, instanceID int64) ([]*entity.InvoiceV2, error) {
 	query := `
-		SELECT id, invoice_list_id, attachment_id, item_id, instance_id,
+		SELECT id, instance_id, attachment_id, item_id,
 			invoice_code, invoice_number, unique_id,
 			invoice_date,
 			COALESCE(invoice_amount_cents, CAST(invoice_amount * 100 AS INTEGER)) as invoice_amount_cents,
@@ -212,7 +185,7 @@ func (r *InvoiceV2Repository) GetByInstanceID(ctx context.Context, instanceID in
 // GetByUniqueID retrieves invoice by unique ID (code + number)
 func (r *InvoiceV2Repository) GetByUniqueID(ctx context.Context, uniqueID string) (*entity.InvoiceV2, error) {
 	query := `
-		SELECT id, invoice_list_id, attachment_id, item_id, instance_id,
+		SELECT id, instance_id, attachment_id, item_id,
 			invoice_code, invoice_number, unique_id,
 			invoice_date,
 			COALESCE(invoice_amount_cents, CAST(invoice_amount * 100 AS INTEGER)) as invoice_amount_cents,
@@ -240,7 +213,7 @@ func (r *InvoiceV2Repository) GetByUniqueID(ctx context.Context, uniqueID string
 func (r *InvoiceV2Repository) Update(ctx context.Context, invoice *entity.InvoiceV2) error {
 	query := `
 		UPDATE invoices_v2
-		SET invoice_list_id = ?, attachment_id = ?, item_id = ?, instance_id = ?,
+		SET instance_id = ?, attachment_id = ?, item_id = ?,
 			invoice_code = ?, invoice_number = ?, unique_id = ?,
 			invoice_date = ?, invoice_amount = ?, invoice_amount_cents = ?,
 			seller_name = ?, seller_tax_id = ?,
@@ -256,10 +229,9 @@ func (r *InvoiceV2Repository) Update(ctx context.Context, invoice *entity.Invoic
 
 	// Write to both amount columns for backwards compatibility
 	_, err := r.getExecutor(ctx).ExecContext(ctx, query,
-		invoice.InvoiceListID,
+		invoice.InstanceID,
 		invoice.AttachmentID,
 		invoice.ItemID,
-		invoice.InstanceID,
 		invoice.InvoiceCode,
 		invoice.InvoiceNumber,
 		invoice.UniqueID,
@@ -283,19 +255,41 @@ func (r *InvoiceV2Repository) Update(ctx context.Context, invoice *entity.Invoic
 	return nil
 }
 
+// GetTotalsByInstanceID returns aggregated count and amount for an instance
+func (r *InvoiceV2Repository) GetTotalsByInstanceID(ctx context.Context, instanceID int64) (*port.InvoiceTotals, error) {
+	query := `
+		SELECT COUNT(*) as count,
+			COALESCE(SUM(COALESCE(invoice_amount_cents, CAST(invoice_amount * 100 AS INTEGER))), 0) as amount_cents
+		FROM invoices_v2
+		WHERE instance_id = ?
+	`
+
+	var totals port.InvoiceTotals
+	err := r.getExecutor(ctx).QueryRowContext(ctx, query, instanceID).Scan(
+		&totals.Count,
+		&totals.AmountCents,
+	)
+	if err != nil {
+		r.logger.Error("Failed to get invoice totals by instance ID",
+			zap.Int64("instance_id", instanceID),
+			zap.Error(err))
+		return nil, fmt.Errorf("failed to get invoice totals: %w", err)
+	}
+
+	return &totals, nil
+}
+
 // scanInvoice scans a single invoice row
 func (r *InvoiceV2Repository) scanInvoice(row *sql.Row) (*entity.InvoiceV2, error) {
 	var invoice entity.InvoiceV2
 	var invoiceDate sql.NullTime
 	var itemID sql.NullInt64
-	var instanceID sql.NullInt64
 
 	err := row.Scan(
 		&invoice.ID,
-		&invoice.InvoiceListID,
+		&invoice.InstanceID,
 		&invoice.AttachmentID,
 		&itemID,
-		&instanceID,
 		&invoice.InvoiceCode,
 		&invoice.InvoiceNumber,
 		&invoice.UniqueID,
@@ -319,9 +313,6 @@ func (r *InvoiceV2Repository) scanInvoice(row *sql.Row) (*entity.InvoiceV2, erro
 	if itemID.Valid {
 		invoice.ItemID = itemID.Int64
 	}
-	if instanceID.Valid {
-		invoice.InstanceID = instanceID.Int64
-	}
 
 	return &invoice, nil
 }
@@ -334,14 +325,12 @@ func (r *InvoiceV2Repository) scanInvoices(rows *sql.Rows) ([]*entity.InvoiceV2,
 		var invoice entity.InvoiceV2
 		var invoiceDate sql.NullTime
 		var itemID sql.NullInt64
-		var instanceID sql.NullInt64
 
 		err := rows.Scan(
 			&invoice.ID,
-			&invoice.InvoiceListID,
+			&invoice.InstanceID,
 			&invoice.AttachmentID,
 			&itemID,
-			&instanceID,
 			&invoice.InvoiceCode,
 			&invoice.InvoiceNumber,
 			&invoice.UniqueID,
@@ -364,9 +353,6 @@ func (r *InvoiceV2Repository) scanInvoices(rows *sql.Rows) ([]*entity.InvoiceV2,
 		}
 		if itemID.Valid {
 			invoice.ItemID = itemID.Int64
-		}
-		if instanceID.Valid {
-			invoice.InstanceID = instanceID.Int64
 		}
 
 		invoices = append(invoices, &invoice)

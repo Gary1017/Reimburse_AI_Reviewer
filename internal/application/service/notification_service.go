@@ -272,47 +272,48 @@ func buildViolationsString(result *AuditResult) string {
 
 // ReviewNotificationService manages notifications linked to AI_REVIEW tasks.
 // This is the new task-based notification service that replaces instance-based notifications.
+// Deprecated: The review_notifications table has been removed in migration 019.
+// Notification status is now tracked via the notification_sent_at field on ApprovalTask.
 type ReviewNotificationService interface {
 	// NotifyTaskResult sends notification for a completed AI review task
 	NotifyTaskResult(ctx context.Context, taskID int64) error
 
-	// GetByTaskID retrieves notification by task ID
-	GetByTaskID(ctx context.Context, taskID int64) (*entity.ReviewNotification, error)
+	// IsNotificationSent checks if notification was already sent for a task
+	IsNotificationSent(ctx context.Context, taskID int64) (bool, error)
 }
 
 type reviewNotificationServiceImpl struct {
-	instanceRepo           port.InstanceRepository
-	taskRepo               port.ApprovalTaskRepository
-	reviewNotificationRepo port.ReviewNotificationRepository
-	larkClient             port.LarkClient
-	messageSender          port.LarkMessageSender
-	txManager              port.TransactionManager
-	logger                 Logger
+	instanceRepo  port.InstanceRepository
+	taskRepo      port.ApprovalTaskRepository
+	larkClient    port.LarkClient
+	messageSender port.LarkMessageSender
+	logger        Logger
 }
 
 // NewReviewNotificationService creates a new ReviewNotificationService
+// Deprecated: reviewNotificationRepo parameter is ignored. Notification status
+// is now tracked on ApprovalTask.notification_sent_at field.
 func NewReviewNotificationService(
 	instanceRepo port.InstanceRepository,
 	taskRepo port.ApprovalTaskRepository,
-	reviewNotificationRepo port.ReviewNotificationRepository,
+	reviewNotificationRepo port.ReviewNotificationRepository, // Deprecated: ignored
 	larkClient port.LarkClient,
 	messageSender port.LarkMessageSender,
-	txManager port.TransactionManager,
+	txManager port.TransactionManager, // Deprecated: ignored
 	logger Logger,
 ) ReviewNotificationService {
 	return &reviewNotificationServiceImpl{
-		instanceRepo:           instanceRepo,
-		taskRepo:               taskRepo,
-		reviewNotificationRepo: reviewNotificationRepo,
-		larkClient:             larkClient,
-		messageSender:          messageSender,
-		txManager:              txManager,
-		logger:                 logger,
+		instanceRepo:  instanceRepo,
+		taskRepo:      taskRepo,
+		larkClient:    larkClient,
+		messageSender: messageSender,
+		logger:        logger,
 	}
 }
 
 // NotifyTaskResult sends notification for a completed AI review task.
 // Decision and confidence are read from the linked ApprovalTask.
+// Notification status is tracked via task.notification_sent_at field.
 func (s *reviewNotificationServiceImpl) NotifyTaskResult(ctx context.Context, taskID int64) error {
 	s.logger.Info("Sending review notification for task", "task_id", taskID)
 
@@ -324,6 +325,14 @@ func (s *reviewNotificationServiceImpl) NotifyTaskResult(ctx context.Context, ta
 	}
 	if task == nil {
 		return fmt.Errorf("task not found: %d", taskID)
+	}
+
+	// Check idempotency - if notification already sent, skip
+	if task.NotificationSentAt != nil {
+		s.logger.Info("Notification already sent for task",
+			"task_id", taskID,
+			"sent_at", task.NotificationSentAt)
+		return nil
 	}
 
 	// Verify task is an AI review task
@@ -351,78 +360,37 @@ func (s *reviewNotificationServiceImpl) NotifyTaskResult(ctx context.Context, ta
 	// Build message from task result
 	message := s.buildTaskResultMessage(task)
 
-	// Create notification record (linked to task)
-	notification := &entity.ReviewNotification{
-		TaskID:         taskID,
-		LarkInstanceID: instance.LarkInstanceID,
-		Status:         entity.ReviewNotificationStatusPending,
-		ApproverCount:  0, // Will be updated if needed
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
+	// Send message via Lark
+	if err := s.messageSender.SendMessage(ctx, detail.OpenID, message); err != nil {
+		s.logger.Error("Failed to send message", "error", err, "task_id", taskID)
+		return fmt.Errorf("send message: %w", err)
 	}
 
-	// Send message and save notification in transaction
-	err = s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
-		// Check if notification already exists (idempotency)
-		existing, err := s.reviewNotificationRepo.GetByTaskID(txCtx, taskID)
-		if err != nil {
-			return fmt.Errorf("check existing notification: %w", err)
-		}
-		if existing != nil {
-			s.logger.Info("Notification already exists for task",
-				"task_id", taskID,
-				"notification_id", existing.ID)
-			notification = existing
-			// If already sent, skip
-			if existing.Status == entity.ReviewNotificationStatusSent {
-				return nil
-			}
-		} else {
-			// Save notification record
-			if err := s.reviewNotificationRepo.Create(txCtx, notification); err != nil {
-				return fmt.Errorf("create notification: %w", err)
-			}
-		}
-
-		// Send message via Lark
-		if err := s.messageSender.SendMessage(txCtx, detail.OpenID, message); err != nil {
-			// Mark as failed
-			s.reviewNotificationRepo.UpdateStatus(txCtx, notification.ID, entity.ReviewNotificationStatusFailed, err.Error())
-			return fmt.Errorf("send message: %w", err)
-		}
-
-		// Mark as sent
-		if err := s.reviewNotificationRepo.MarkSent(txCtx, notification.ID); err != nil {
-			return fmt.Errorf("mark notification sent: %w", err)
-		}
-
-		return nil
-	})
-
-	if err != nil {
-		s.logger.Error("Failed to send review notification", "error", err, "task_id", taskID)
-		return err
+	// Mark notification as sent on the task
+	if err := s.taskRepo.MarkNotificationSent(ctx, taskID); err != nil {
+		s.logger.Error("Failed to mark notification sent", "error", err, "task_id", taskID)
+		return fmt.Errorf("mark notification sent: %w", err)
 	}
 
 	s.logger.Info("Review notification sent successfully",
 		"task_id", taskID,
-		"notification_id", notification.ID,
 		"open_id", detail.OpenID,
 	)
 
 	return nil
 }
 
-// GetByTaskID retrieves notification by task ID.
-func (s *reviewNotificationServiceImpl) GetByTaskID(ctx context.Context, taskID int64) (*entity.ReviewNotification, error) {
-	notification, err := s.reviewNotificationRepo.GetByTaskID(ctx, taskID)
+// IsNotificationSent checks if notification was already sent for a task.
+func (s *reviewNotificationServiceImpl) IsNotificationSent(ctx context.Context, taskID int64) (bool, error) {
+	task, err := s.taskRepo.GetByID(ctx, taskID)
 	if err != nil {
-		s.logger.Error("Failed to get notification by task ID",
-			"error", err,
-			"task_id", taskID)
-		return nil, fmt.Errorf("get notification: %w", err)
+		s.logger.Error("Failed to get task", "error", err, "task_id", taskID)
+		return false, fmt.Errorf("get task: %w", err)
 	}
-	return notification, nil
+	if task == nil {
+		return false, fmt.Errorf("task not found: %d", taskID)
+	}
+	return task.NotificationSentAt != nil, nil
 }
 
 // buildTaskResultMessage builds a human-readable message from task result.

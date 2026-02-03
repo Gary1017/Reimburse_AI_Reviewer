@@ -27,8 +27,9 @@ type LarkTask struct {
 // TaskService manages approval task operations.
 // Tasks are the unified model for both AI review and human approval.
 type TaskService interface {
-	// CreateAIReviewTask creates an AI review task for an instance
-	CreateAIReviewTask(ctx context.Context, instanceID int64, assigneeUserID string) (*entity.ApprovalTask, error)
+	// CreateAIReviewTask creates an AI review task for an instance.
+	// assigneeOpenID is the Lark open_id of the person accountable for AI decisions (governance requirement).
+	CreateAIReviewTask(ctx context.Context, instanceID int64, assigneeUserID, assigneeOpenID string) (*entity.ApprovalTask, error)
 
 	// CreateHumanReviewTask creates a human review task from Lark
 	CreateHumanReviewTask(ctx context.Context, instanceID int64, larkTaskID, nodeID, nodeName, assigneeUserID, assigneeOpenID string) (*entity.ApprovalTask, error)
@@ -82,7 +83,8 @@ func NewTaskService(
 
 // CreateAIReviewTask creates an AI review task for an instance.
 // AI review tasks have sequence_number=0 and is_ai_decision=true.
-func (s *taskServiceImpl) CreateAIReviewTask(ctx context.Context, instanceID int64, assigneeUserID string) (*entity.ApprovalTask, error) {
+// assigneeOpenID is the Lark open_id of the person accountable for AI decisions (governance requirement).
+func (s *taskServiceImpl) CreateAIReviewTask(ctx context.Context, instanceID int64, assigneeUserID, assigneeOpenID string) (*entity.ApprovalTask, error) {
 	// Check if AI review task already exists (idempotency)
 	existing, err := s.taskRepo.GetAIReviewTask(ctx, instanceID)
 	if err != nil {
@@ -99,6 +101,7 @@ func (s *taskServiceImpl) CreateAIReviewTask(ctx context.Context, instanceID int
 	}
 
 	// Create new AI review task
+	// Note: AI review tasks are accountable to assigneeOpenID for Lark governance
 	task := &entity.ApprovalTask{
 		InstanceID:     instanceID,
 		TaskType:       entity.TaskTypeAIReview,
@@ -107,6 +110,7 @@ func (s *taskServiceImpl) CreateAIReviewTask(ctx context.Context, instanceID int
 		IsCurrent:      true, // AI review starts as current
 		IsAIDecision:   true,
 		AssigneeUserID: assigneeUserID,
+		AssigneeOpenID: assigneeOpenID, // Person accountable for AI decisions
 		StartTime:      time.Now().Format(time.RFC3339),
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),

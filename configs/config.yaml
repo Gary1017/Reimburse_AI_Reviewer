@@ -17,6 +17,9 @@ lark:
   app_secret: ""
   approval_code: ""  # Unique approval definition code from Lark admin console
   api_timeout: 30s
+  # AI Approver: The person accountable for AI review decisions (Lark governance requirement)
+  # Set via environment variable: AI_APPROVER_OPEN_ID
+  ai_approver_open_id: ""  # Lark open_id of the person who AI reviews on behalf of
 
 openai:
   # Set via environment variable: OPENAI_API_KEY

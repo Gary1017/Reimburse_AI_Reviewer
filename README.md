@@ -68,6 +68,70 @@ The system follows **Clean Architecture** (Hexagonal/Ports & Adapters) principle
 3. **Dependency Inversion**: Domain layer has zero dependencies; Application layer depends only on Domain; Infrastructure implements Application ports
 4. **Background Workers**: Long-running tasks (attachment downloads, invoice AI processing) run in separate goroutines with retry logic
 
+### **Database Schema**
+
+The system uses SQLite with a task-based approval workflow. Key design decisions:
+
+- **Unified Task Model**: AI review and human approval are both represented as `approval_tasks`, enabling consistent workflow tracking
+- **Governance Compliance**: All tasks (including AI) have an assignee for Lark accountability requirements
+- **Amount Precision**: Monetary values stored as INTEGER cents (分) to avoid float precision issues
+- **Invoice Deduplication**: Composite unique index on `(invoice_code, invoice_number)` prevents double-reimbursement
+
+```mermaid
+erDiagram
+    approval_instances ||--o{ reimbursement_items : "has items"
+    approval_instances ||--o{ attachments : "has attachments"
+    approval_instances ||--o{ approval_tasks : "has tasks"
+    approval_instances ||--o{ invoices_v2 : "has invoices"
+    approval_instances ||--o| generated_vouchers : "generates voucher"
+
+    reimbursement_items ||--o{ attachments : "has attachments"
+    attachments ||--o| invoices_v2 : "extracts invoice 1:1"
+
+    approval_instances {
+        INTEGER id PK
+        TEXT lark_instance_id UK
+        TEXT status
+        INTEGER total_amount_cents
+    }
+
+    approval_tasks {
+        INTEGER id PK
+        INTEGER instance_id FK
+        TEXT task_type "AI_REVIEW or HUMAN_REVIEW"
+        TEXT assignee_open_id "Required for governance"
+        BOOLEAN is_ai_decision
+        TEXT decision
+        REAL confidence
+    }
+
+    invoices_v2 {
+        INTEGER id PK
+        INTEGER instance_id FK
+        INTEGER attachment_id FK
+        TEXT unique_id UK "code+number dedup"
+        INTEGER invoice_amount_cents
+    }
+
+    attachments {
+        INTEGER id PK
+        INTEGER instance_id FK
+        TEXT file_type "INVOICE or OTHER"
+    }
+
+    generated_vouchers {
+        INTEGER id PK
+        INTEGER instance_id FK
+    }
+
+    reimbursement_items {
+        INTEGER id PK
+        INTEGER instance_id FK
+    }
+```
+
+> **Full ER Diagram**: See [docs/database-er-diagram.svg](docs/database-er-diagram.svg) for the complete schema with all fields.
+
 ---
 
 ## ✨ AI-Powered Features

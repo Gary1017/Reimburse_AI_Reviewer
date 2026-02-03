@@ -626,6 +626,21 @@ func (r *ApprovalTaskRepository) scanTasks(rows *sql.Rows) ([]*entity.ApprovalTa
 	return tasks, rows.Err()
 }
 
+// MarkNotificationSent marks the notification as sent for a task
+func (r *ApprovalTaskRepository) MarkNotificationSent(ctx context.Context, id int64) error {
+	query := `UPDATE approval_tasks SET notification_sent_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+
+	_, err := r.getExecutor(ctx).ExecContext(ctx, query, id)
+	if err != nil {
+		r.logger.Error("Failed to mark notification sent",
+			zap.Int64("id", id),
+			zap.Error(err))
+		return fmt.Errorf("failed to mark notification sent: %w", err)
+	}
+
+	return nil
+}
+
 // getExecutor returns appropriate executor based on context
 func (r *ApprovalTaskRepository) getExecutor(ctx context.Context) executor {
 	if tx, ok := ctx.Value(contextKey("tx")).(*sql.Tx); ok {

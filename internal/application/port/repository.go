@@ -47,29 +47,24 @@ type HistoryRepository interface {
 // =============================================================================
 
 // InvoiceListRepository defines persistence operations for InvoiceList
-// Each approval instance has exactly one invoice list (1:1 relationship)
+// Deprecated: invoice_lists table removed in migration 019. Use InvoiceV2Repository.GetTotalsByInstanceID instead.
 type InvoiceListRepository interface {
-	// Create creates a new invoice list for an instance
 	Create(ctx context.Context, list *entity.InvoiceList) error
-
-	// GetByID retrieves an invoice list by its ID
 	GetByID(ctx context.Context, id int64) (*entity.InvoiceList, error)
-
-	// GetByInstanceID retrieves the invoice list for an instance (1:1)
 	GetByInstanceID(ctx context.Context, instanceID int64) (*entity.InvoiceList, error)
-
-	// Update updates an existing invoice list
 	Update(ctx context.Context, list *entity.InvoiceList) error
-
-	// UpdateStatus updates the status of an invoice list
 	UpdateStatus(ctx context.Context, id int64, status string) error
-
-	// UpdateTotals updates the count and amount totals (amount in cents)
 	UpdateTotals(ctx context.Context, id int64, count int, amountCents int64) error
 }
 
+// InvoiceTotals represents aggregated invoice data for an instance
+type InvoiceTotals struct {
+	Count       int   `json:"count"`
+	AmountCents int64 `json:"amount_cents"`
+}
+
 // InvoiceV2Repository defines persistence operations for InvoiceV2
-// Each invoice links to an invoice_list, attachment (1:1), and item
+// Each invoice links to instance (direct), attachment (1:1), and item
 type InvoiceV2Repository interface {
 	// Create creates a new invoice record
 	Create(ctx context.Context, invoice *entity.InvoiceV2) error
@@ -83,14 +78,14 @@ type InvoiceV2Repository interface {
 	// GetByItemID retrieves invoice by item ID
 	GetByItemID(ctx context.Context, itemID int64) (*entity.InvoiceV2, error)
 
-	// GetByInvoiceListID retrieves all invoices in an invoice list
-	GetByInvoiceListID(ctx context.Context, invoiceListID int64) ([]*entity.InvoiceV2, error)
-
-	// GetByInstanceID retrieves all invoices for an instance (via invoice_list)
+	// GetByInstanceID retrieves all invoices for an instance
 	GetByInstanceID(ctx context.Context, instanceID int64) ([]*entity.InvoiceV2, error)
 
 	// GetByUniqueID retrieves invoice by unique ID (code + number)
 	GetByUniqueID(ctx context.Context, uniqueID string) (*entity.InvoiceV2, error)
+
+	// GetTotalsByInstanceID returns aggregated count and amount for an instance
+	GetTotalsByInstanceID(ctx context.Context, instanceID int64) (*InvoiceTotals, error)
 
 	// Update updates an existing invoice
 	Update(ctx context.Context, invoice *entity.InvoiceV2) error
@@ -128,24 +123,18 @@ type ApprovalTaskRepository interface {
 
 	// SetCurrent sets a task as the current active task (and clears others)
 	SetCurrent(ctx context.Context, instanceID int64, taskID int64) error
+
+	// MarkNotificationSent marks the notification as sent for a task
+	MarkNotificationSent(ctx context.Context, id int64) error
 }
 
 // ReviewNotificationRepository defines persistence operations for ReviewNotification
-// Each notification links to an AI_REVIEW task (1:1 relationship)
+// Deprecated: review_notifications table removed in migration 019. Use ApprovalTaskRepository.MarkNotificationSent instead.
 type ReviewNotificationRepository interface {
-	// Create creates a new review notification
 	Create(ctx context.Context, notification *entity.ReviewNotification) error
-
-	// GetByID retrieves a notification by its ID
 	GetByID(ctx context.Context, id int64) (*entity.ReviewNotification, error)
-
-	// GetByTaskID retrieves notification by task ID (1:1 relationship)
 	GetByTaskID(ctx context.Context, taskID int64) (*entity.ReviewNotification, error)
-
-	// UpdateStatus updates notification status and optional error message
 	UpdateStatus(ctx context.Context, id int64, status string, errorMsg string) error
-
-	// MarkSent marks notification as sent with timestamp
 	MarkSent(ctx context.Context, id int64) error
 }
 

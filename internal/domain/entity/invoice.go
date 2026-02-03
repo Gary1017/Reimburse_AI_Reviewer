@@ -139,15 +139,14 @@ type CompletenessResult struct {
 	Reasoning       string   `json:"reasoning"`
 }
 
-// InvoiceV2 represents a Chinese invoice linked to invoice_list and attachment.
+// InvoiceV2 represents a Chinese invoice linked to an attachment.
 // This is the new structure replacing Invoice for the refactored schema.
 // Each InvoiceV2 has a 1:1 relationship with an Attachment.
 type InvoiceV2 struct {
-	ID            int64 `json:"id"`
-	InvoiceListID int64 `json:"invoice_list_id"`
-	AttachmentID  int64 `json:"attachment_id"`
-	ItemID        int64 `json:"item_id"`
-	InstanceID    int64 `json:"instance_id"` // Redundant for query efficiency
+	ID           int64 `json:"id"`
+	InstanceID   int64 `json:"instance_id"`   // Primary link to approval instance
+	AttachmentID int64 `json:"attachment_id"` // 1:1 with attachment
+	ItemID       int64 `json:"item_id"`       // Derived from attachment
 
 	// Invoice identification (from GPT-4 extraction)
 	InvoiceCode   string `json:"invoice_code"`
