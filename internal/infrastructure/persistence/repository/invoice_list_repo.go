@@ -28,14 +28,16 @@ func NewInvoiceListRepository(db *sql.DB, logger *zap.Logger) port.InvoiceListRe
 func (r *InvoiceListRepository) Create(ctx context.Context, list *entity.InvoiceList) error {
 	query := `
 		INSERT INTO invoice_lists (
-			instance_id, total_invoice_count, total_invoice_amount, status
-		) VALUES (?, ?, ?, ?)
+			instance_id, total_invoice_count, total_invoice_amount, total_invoice_amount_cents, status
+		) VALUES (?, ?, ?, ?, ?)
 	`
 
+	// Write to both amount columns for backwards compatibility
 	result, err := r.getExecutor(ctx).ExecContext(ctx, query,
 		list.InstanceID,
 		list.TotalInvoiceCount,
-		list.TotalInvoiceAmount,
+		float64(list.TotalInvoiceAmountCents)/100.0, // Deprecated
+		list.TotalInvoiceAmountCents,                 // Primary
 		list.Status,
 	)
 	if err != nil {
@@ -57,8 +59,9 @@ func (r *InvoiceListRepository) Create(ctx context.Context, list *entity.Invoice
 // GetByID retrieves an invoice list by its ID
 func (r *InvoiceListRepository) GetByID(ctx context.Context, id int64) (*entity.InvoiceList, error) {
 	query := `
-		SELECT id, instance_id, total_invoice_count, total_invoice_amount, status,
-			created_at, updated_at
+		SELECT id, instance_id, total_invoice_count,
+			COALESCE(total_invoice_amount_cents, CAST(total_invoice_amount * 100 AS INTEGER)) as total_invoice_amount_cents,
+			total_invoice_amount, status, created_at, updated_at
 		FROM invoice_lists
 		WHERE id = ?
 	`
@@ -68,7 +71,8 @@ func (r *InvoiceListRepository) GetByID(ctx context.Context, id int64) (*entity.
 		&list.ID,
 		&list.InstanceID,
 		&list.TotalInvoiceCount,
-		&list.TotalInvoiceAmount,
+		&list.TotalInvoiceAmountCents,
+		&list.TotalInvoiceAmount, // Deprecated
 		&list.Status,
 		&list.CreatedAt,
 		&list.UpdatedAt,
@@ -90,8 +94,9 @@ func (r *InvoiceListRepository) GetByID(ctx context.Context, id int64) (*entity.
 // GetByInstanceID retrieves the invoice list for an instance (1:1 relationship)
 func (r *InvoiceListRepository) GetByInstanceID(ctx context.Context, instanceID int64) (*entity.InvoiceList, error) {
 	query := `
-		SELECT id, instance_id, total_invoice_count, total_invoice_amount, status,
-			created_at, updated_at
+		SELECT id, instance_id, total_invoice_count,
+			COALESCE(total_invoice_amount_cents, CAST(total_invoice_amount * 100 AS INTEGER)) as total_invoice_amount_cents,
+			total_invoice_amount, status, created_at, updated_at
 		FROM invoice_lists
 		WHERE instance_id = ?
 	`
@@ -101,7 +106,8 @@ func (r *InvoiceListRepository) GetByInstanceID(ctx context.Context, instanceID 
 		&list.ID,
 		&list.InstanceID,
 		&list.TotalInvoiceCount,
-		&list.TotalInvoiceAmount,
+		&list.TotalInvoiceAmountCents,
+		&list.TotalInvoiceAmount, // Deprecated
 		&list.Status,
 		&list.CreatedAt,
 		&list.UpdatedAt,
@@ -124,14 +130,16 @@ func (r *InvoiceListRepository) GetByInstanceID(ctx context.Context, instanceID 
 func (r *InvoiceListRepository) Update(ctx context.Context, list *entity.InvoiceList) error {
 	query := `
 		UPDATE invoice_lists
-		SET total_invoice_count = ?, total_invoice_amount = ?, status = ?,
-			updated_at = CURRENT_TIMESTAMP
+		SET total_invoice_count = ?, total_invoice_amount = ?, total_invoice_amount_cents = ?,
+			status = ?, updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?
 	`
 
+	// Write to both amount columns for backwards compatibility
 	_, err := r.getExecutor(ctx).ExecContext(ctx, query,
 		list.TotalInvoiceCount,
-		list.TotalInvoiceAmount,
+		float64(list.TotalInvoiceAmountCents)/100.0, // Deprecated
+		list.TotalInvoiceAmountCents,                 // Primary
 		list.Status,
 		list.ID,
 	)
@@ -161,20 +169,27 @@ func (r *InvoiceListRepository) UpdateStatus(ctx context.Context, id int64, stat
 	return nil
 }
 
-// UpdateTotals updates the count and amount totals
-func (r *InvoiceListRepository) UpdateTotals(ctx context.Context, id int64, count int, amount float64) error {
+// UpdateTotals updates the count and amount totals (amount in cents)
+func (r *InvoiceListRepository) UpdateTotals(ctx context.Context, id int64, count int, amountCents int64) error {
 	query := `
 		UPDATE invoice_lists
-		SET total_invoice_count = ?, total_invoice_amount = ?, updated_at = CURRENT_TIMESTAMP
+		SET total_invoice_count = ?, total_invoice_amount = ?, total_invoice_amount_cents = ?,
+			updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?
 	`
 
-	_, err := r.getExecutor(ctx).ExecContext(ctx, query, count, amount, id)
+	// Write to both amount columns for backwards compatibility
+	_, err := r.getExecutor(ctx).ExecContext(ctx, query,
+		count,
+		float64(amountCents)/100.0, // Deprecated
+		amountCents,                 // Primary
+		id,
+	)
 	if err != nil {
 		r.logger.Error("Failed to update invoice list totals",
 			zap.Int64("id", id),
 			zap.Int("count", count),
-			zap.Float64("amount", amount),
+			zap.Int64("amount_cents", amountCents),
 			zap.Error(err))
 		return fmt.Errorf("failed to update invoice list totals: %w", err)
 	}

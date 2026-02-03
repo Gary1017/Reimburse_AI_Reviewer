@@ -28,17 +28,19 @@ func NewItemRepository(db *sql.DB, logger *zap.Logger) port.ItemRepository {
 func (r *ItemRepository) Create(ctx context.Context, item *entity.ReimbursementItem) error {
 	query := `
 		INSERT INTO reimbursement_items (
-			instance_id, item_type, description, amount, currency,
+			instance_id, item_type, description, amount, amount_cents, currency,
 			receipt_attachment, ai_price_check, ai_policy_check,
 			expense_date, vendor, business_purpose
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
+	// Write to both amount (deprecated) and amount_cents for backwards compatibility
 	result, err := r.getExecutor(ctx).ExecContext(ctx, query,
 		item.InstanceID,
 		item.ItemType,
 		item.Description,
-		item.Amount,
+		float64(item.AmountCents)/100.0, // Deprecated: amount in yuan
+		item.AmountCents,                 // Primary: amount in cents
 		item.Currency,
 		item.ReceiptAttachment,
 		item.AIPriceCheck,
@@ -64,7 +66,9 @@ func (r *ItemRepository) Create(ctx context.Context, item *entity.ReimbursementI
 // GetByID retrieves a reimbursement item by ID
 func (r *ItemRepository) GetByID(ctx context.Context, id int64) (*entity.ReimbursementItem, error) {
 	query := `
-		SELECT id, instance_id, item_type, description, amount, currency,
+		SELECT id, instance_id, item_type, description,
+			COALESCE(amount_cents, CAST(amount * 100 AS INTEGER)) as amount_cents,
+			amount, currency,
 			receipt_attachment, ai_price_check, ai_policy_check,
 			expense_date, vendor, business_purpose, created_at
 		FROM reimbursement_items
@@ -79,7 +83,8 @@ func (r *ItemRepository) GetByID(ctx context.Context, id int64) (*entity.Reimbur
 		&item.InstanceID,
 		&item.ItemType,
 		&item.Description,
-		&item.Amount,
+		&item.AmountCents,
+		&item.Amount, // Deprecated, kept for backwards compatibility
 		&item.Currency,
 		&item.ReceiptAttachment,
 		&item.AIPriceCheck,
@@ -108,7 +113,9 @@ func (r *ItemRepository) GetByID(ctx context.Context, id int64) (*entity.Reimbur
 // GetByInstanceID retrieves all reimbursement items for an instance
 func (r *ItemRepository) GetByInstanceID(ctx context.Context, instanceID int64) ([]*entity.ReimbursementItem, error) {
 	query := `
-		SELECT id, instance_id, item_type, description, amount, currency,
+		SELECT id, instance_id, item_type, description,
+			COALESCE(amount_cents, CAST(amount * 100 AS INTEGER)) as amount_cents,
+			amount, currency,
 			receipt_attachment, ai_price_check, ai_policy_check,
 			expense_date, vendor, business_purpose, created_at
 		FROM reimbursement_items
@@ -133,7 +140,8 @@ func (r *ItemRepository) GetByInstanceID(ctx context.Context, instanceID int64) 
 			&item.InstanceID,
 			&item.ItemType,
 			&item.Description,
-			&item.Amount,
+			&item.AmountCents,
+			&item.Amount, // Deprecated, kept for backwards compatibility
 			&item.Currency,
 			&item.ReceiptAttachment,
 			&item.AIPriceCheck,
@@ -161,16 +169,18 @@ func (r *ItemRepository) GetByInstanceID(ctx context.Context, instanceID int64) 
 func (r *ItemRepository) Update(ctx context.Context, item *entity.ReimbursementItem) error {
 	query := `
 		UPDATE reimbursement_items
-		SET item_type = ?, description = ?, amount = ?, currency = ?,
+		SET item_type = ?, description = ?, amount = ?, amount_cents = ?, currency = ?,
 			receipt_attachment = ?, ai_price_check = ?, ai_policy_check = ?,
 			expense_date = ?, vendor = ?, business_purpose = ?
 		WHERE id = ?
 	`
 
+	// Write to both amount (deprecated) and amount_cents for backwards compatibility
 	_, err := r.getExecutor(ctx).ExecContext(ctx, query,
 		item.ItemType,
 		item.Description,
-		item.Amount,
+		float64(item.AmountCents)/100.0, // Deprecated: amount in yuan
+		item.AmountCents,                 // Primary: amount in cents
 		item.Currency,
 		item.ReceiptAttachment,
 		item.AIPriceCheck,

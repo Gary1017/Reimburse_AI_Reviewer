@@ -64,8 +64,8 @@ type InvoiceListRepository interface {
 	// UpdateStatus updates the status of an invoice list
 	UpdateStatus(ctx context.Context, id int64, status string) error
 
-	// UpdateTotals updates the count and amount totals
-	UpdateTotals(ctx context.Context, id int64, count int, amount float64) error
+	// UpdateTotals updates the count and amount totals (amount in cents)
+	UpdateTotals(ctx context.Context, id int64, count int, amountCents int64) error
 }
 
 // InvoiceV2Repository defines persistence operations for InvoiceV2

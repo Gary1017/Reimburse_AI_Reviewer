@@ -28,11 +28,11 @@ func NewInvoiceV2Repository(db *sql.DB, logger *zap.Logger) port.InvoiceV2Reposi
 func (r *InvoiceV2Repository) Create(ctx context.Context, invoice *entity.InvoiceV2) error {
 	query := `
 		INSERT INTO invoices_v2 (
-			invoice_list_id, attachment_id, item_id,
+			invoice_list_id, attachment_id, item_id, instance_id,
 			invoice_code, invoice_number, unique_id,
-			invoice_date, invoice_amount, seller_name, seller_tax_id,
+			invoice_date, invoice_amount, invoice_amount_cents, seller_name, seller_tax_id,
 			buyer_name, buyer_tax_id, extracted_data
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	// Handle nullable invoice_date
@@ -41,15 +41,18 @@ func (r *InvoiceV2Repository) Create(ctx context.Context, invoice *entity.Invoic
 		invoiceDate = invoice.InvoiceDate
 	}
 
+	// Write to both amount columns for backwards compatibility
 	result, err := r.getExecutor(ctx).ExecContext(ctx, query,
 		invoice.InvoiceListID,
 		invoice.AttachmentID,
 		invoice.ItemID,
+		invoice.InstanceID, // Redundant for query efficiency
 		invoice.InvoiceCode,
 		invoice.InvoiceNumber,
 		invoice.UniqueID,
 		invoiceDate,
-		invoice.InvoiceAmount,
+		float64(invoice.InvoiceAmountCents)/100.0, // Deprecated
+		invoice.InvoiceAmountCents,                 // Primary
 		invoice.SellerName,
 		invoice.SellerTaxID,
 		invoice.BuyerName,
@@ -76,9 +79,11 @@ func (r *InvoiceV2Repository) Create(ctx context.Context, invoice *entity.Invoic
 // GetByID retrieves an invoice by its ID
 func (r *InvoiceV2Repository) GetByID(ctx context.Context, id int64) (*entity.InvoiceV2, error) {
 	query := `
-		SELECT id, invoice_list_id, attachment_id, item_id,
+		SELECT id, invoice_list_id, attachment_id, item_id, instance_id,
 			invoice_code, invoice_number, unique_id,
-			invoice_date, invoice_amount, seller_name, seller_tax_id,
+			invoice_date,
+			COALESCE(invoice_amount_cents, CAST(invoice_amount * 100 AS INTEGER)) as invoice_amount_cents,
+			invoice_amount, seller_name, seller_tax_id,
 			buyer_name, buyer_tax_id, extracted_data, created_at
 		FROM invoices_v2
 		WHERE id = ?
@@ -101,9 +106,11 @@ func (r *InvoiceV2Repository) GetByID(ctx context.Context, id int64) (*entity.In
 // GetByAttachmentID retrieves invoice by attachment ID (1:1 relationship)
 func (r *InvoiceV2Repository) GetByAttachmentID(ctx context.Context, attachmentID int64) (*entity.InvoiceV2, error) {
 	query := `
-		SELECT id, invoice_list_id, attachment_id, item_id,
+		SELECT id, invoice_list_id, attachment_id, item_id, instance_id,
 			invoice_code, invoice_number, unique_id,
-			invoice_date, invoice_amount, seller_name, seller_tax_id,
+			invoice_date,
+			COALESCE(invoice_amount_cents, CAST(invoice_amount * 100 AS INTEGER)) as invoice_amount_cents,
+			invoice_amount, seller_name, seller_tax_id,
 			buyer_name, buyer_tax_id, extracted_data, created_at
 		FROM invoices_v2
 		WHERE attachment_id = ?
@@ -126,9 +133,11 @@ func (r *InvoiceV2Repository) GetByAttachmentID(ctx context.Context, attachmentI
 // GetByItemID retrieves invoice by item ID
 func (r *InvoiceV2Repository) GetByItemID(ctx context.Context, itemID int64) (*entity.InvoiceV2, error) {
 	query := `
-		SELECT id, invoice_list_id, attachment_id, item_id,
+		SELECT id, invoice_list_id, attachment_id, item_id, instance_id,
 			invoice_code, invoice_number, unique_id,
-			invoice_date, invoice_amount, seller_name, seller_tax_id,
+			invoice_date,
+			COALESCE(invoice_amount_cents, CAST(invoice_amount * 100 AS INTEGER)) as invoice_amount_cents,
+			invoice_amount, seller_name, seller_tax_id,
 			buyer_name, buyer_tax_id, extracted_data, created_at
 		FROM invoices_v2
 		WHERE item_id = ?
@@ -151,9 +160,11 @@ func (r *InvoiceV2Repository) GetByItemID(ctx context.Context, itemID int64) (*e
 // GetByInvoiceListID retrieves all invoices in an invoice list
 func (r *InvoiceV2Repository) GetByInvoiceListID(ctx context.Context, invoiceListID int64) ([]*entity.InvoiceV2, error) {
 	query := `
-		SELECT id, invoice_list_id, attachment_id, item_id,
+		SELECT id, invoice_list_id, attachment_id, item_id, instance_id,
 			invoice_code, invoice_number, unique_id,
-			invoice_date, invoice_amount, seller_name, seller_tax_id,
+			invoice_date,
+			COALESCE(invoice_amount_cents, CAST(invoice_amount * 100 AS INTEGER)) as invoice_amount_cents,
+			invoice_amount, seller_name, seller_tax_id,
 			buyer_name, buyer_tax_id, extracted_data, created_at
 		FROM invoices_v2
 		WHERE invoice_list_id = ?
@@ -172,17 +183,18 @@ func (r *InvoiceV2Repository) GetByInvoiceListID(ctx context.Context, invoiceLis
 	return r.scanInvoices(rows)
 }
 
-// GetByInstanceID retrieves all invoices for an instance (via invoice_list)
+// GetByInstanceID retrieves all invoices for an instance (uses redundant instance_id for efficiency)
 func (r *InvoiceV2Repository) GetByInstanceID(ctx context.Context, instanceID int64) ([]*entity.InvoiceV2, error) {
 	query := `
-		SELECT iv.id, iv.invoice_list_id, iv.attachment_id, iv.item_id,
-			iv.invoice_code, iv.invoice_number, iv.unique_id,
-			iv.invoice_date, iv.invoice_amount, iv.seller_name, iv.seller_tax_id,
-			iv.buyer_name, iv.buyer_tax_id, iv.extracted_data, iv.created_at
-		FROM invoices_v2 iv
-		INNER JOIN invoice_lists il ON iv.invoice_list_id = il.id
-		WHERE il.instance_id = ?
-		ORDER BY iv.id
+		SELECT id, invoice_list_id, attachment_id, item_id, instance_id,
+			invoice_code, invoice_number, unique_id,
+			invoice_date,
+			COALESCE(invoice_amount_cents, CAST(invoice_amount * 100 AS INTEGER)) as invoice_amount_cents,
+			invoice_amount, seller_name, seller_tax_id,
+			buyer_name, buyer_tax_id, extracted_data, created_at
+		FROM invoices_v2
+		WHERE instance_id = ?
+		ORDER BY id
 	`
 
 	rows, err := r.getExecutor(ctx).QueryContext(ctx, query, instanceID)
@@ -200,9 +212,11 @@ func (r *InvoiceV2Repository) GetByInstanceID(ctx context.Context, instanceID in
 // GetByUniqueID retrieves invoice by unique ID (code + number)
 func (r *InvoiceV2Repository) GetByUniqueID(ctx context.Context, uniqueID string) (*entity.InvoiceV2, error) {
 	query := `
-		SELECT id, invoice_list_id, attachment_id, item_id,
+		SELECT id, invoice_list_id, attachment_id, item_id, instance_id,
 			invoice_code, invoice_number, unique_id,
-			invoice_date, invoice_amount, seller_name, seller_tax_id,
+			invoice_date,
+			COALESCE(invoice_amount_cents, CAST(invoice_amount * 100 AS INTEGER)) as invoice_amount_cents,
+			invoice_amount, seller_name, seller_tax_id,
 			buyer_name, buyer_tax_id, extracted_data, created_at
 		FROM invoices_v2
 		WHERE unique_id = ?
@@ -226,9 +240,10 @@ func (r *InvoiceV2Repository) GetByUniqueID(ctx context.Context, uniqueID string
 func (r *InvoiceV2Repository) Update(ctx context.Context, invoice *entity.InvoiceV2) error {
 	query := `
 		UPDATE invoices_v2
-		SET invoice_list_id = ?, attachment_id = ?, item_id = ?,
+		SET invoice_list_id = ?, attachment_id = ?, item_id = ?, instance_id = ?,
 			invoice_code = ?, invoice_number = ?, unique_id = ?,
-			invoice_date = ?, invoice_amount = ?, seller_name = ?, seller_tax_id = ?,
+			invoice_date = ?, invoice_amount = ?, invoice_amount_cents = ?,
+			seller_name = ?, seller_tax_id = ?,
 			buyer_name = ?, buyer_tax_id = ?, extracted_data = ?
 		WHERE id = ?
 	`
@@ -239,15 +254,18 @@ func (r *InvoiceV2Repository) Update(ctx context.Context, invoice *entity.Invoic
 		invoiceDate = invoice.InvoiceDate
 	}
 
+	// Write to both amount columns for backwards compatibility
 	_, err := r.getExecutor(ctx).ExecContext(ctx, query,
 		invoice.InvoiceListID,
 		invoice.AttachmentID,
 		invoice.ItemID,
+		invoice.InstanceID,
 		invoice.InvoiceCode,
 		invoice.InvoiceNumber,
 		invoice.UniqueID,
 		invoiceDate,
-		invoice.InvoiceAmount,
+		float64(invoice.InvoiceAmountCents)/100.0, // Deprecated
+		invoice.InvoiceAmountCents,                 // Primary
 		invoice.SellerName,
 		invoice.SellerTaxID,
 		invoice.BuyerName,
@@ -270,17 +288,20 @@ func (r *InvoiceV2Repository) scanInvoice(row *sql.Row) (*entity.InvoiceV2, erro
 	var invoice entity.InvoiceV2
 	var invoiceDate sql.NullTime
 	var itemID sql.NullInt64
+	var instanceID sql.NullInt64
 
 	err := row.Scan(
 		&invoice.ID,
 		&invoice.InvoiceListID,
 		&invoice.AttachmentID,
 		&itemID,
+		&instanceID,
 		&invoice.InvoiceCode,
 		&invoice.InvoiceNumber,
 		&invoice.UniqueID,
 		&invoiceDate,
-		&invoice.InvoiceAmount,
+		&invoice.InvoiceAmountCents,
+		&invoice.InvoiceAmount, // Deprecated
 		&invoice.SellerName,
 		&invoice.SellerTaxID,
 		&invoice.BuyerName,
@@ -298,6 +319,9 @@ func (r *InvoiceV2Repository) scanInvoice(row *sql.Row) (*entity.InvoiceV2, erro
 	if itemID.Valid {
 		invoice.ItemID = itemID.Int64
 	}
+	if instanceID.Valid {
+		invoice.InstanceID = instanceID.Int64
+	}
 
 	return &invoice, nil
 }
@@ -310,17 +334,20 @@ func (r *InvoiceV2Repository) scanInvoices(rows *sql.Rows) ([]*entity.InvoiceV2,
 		var invoice entity.InvoiceV2
 		var invoiceDate sql.NullTime
 		var itemID sql.NullInt64
+		var instanceID sql.NullInt64
 
 		err := rows.Scan(
 			&invoice.ID,
 			&invoice.InvoiceListID,
 			&invoice.AttachmentID,
 			&itemID,
+			&instanceID,
 			&invoice.InvoiceCode,
 			&invoice.InvoiceNumber,
 			&invoice.UniqueID,
 			&invoiceDate,
-			&invoice.InvoiceAmount,
+			&invoice.InvoiceAmountCents,
+			&invoice.InvoiceAmount, // Deprecated
 			&invoice.SellerName,
 			&invoice.SellerTaxID,
 			&invoice.BuyerName,
@@ -337,6 +364,9 @@ func (r *InvoiceV2Repository) scanInvoices(rows *sql.Rows) ([]*entity.InvoiceV2,
 		}
 		if itemID.Valid {
 			invoice.ItemID = itemID.Int64
+		}
+		if instanceID.Valid {
+			invoice.InstanceID = instanceID.Int64
 		}
 
 		invoices = append(invoices, &invoice)

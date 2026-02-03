@@ -147,6 +147,7 @@ type InvoiceV2 struct {
 	InvoiceListID int64 `json:"invoice_list_id"`
 	AttachmentID  int64 `json:"attachment_id"`
 	ItemID        int64 `json:"item_id"`
+	InstanceID    int64 `json:"instance_id"` // Redundant for query efficiency
 
 	// Invoice identification (from GPT-4 extraction)
 	InvoiceCode   string `json:"invoice_code"`
@@ -154,13 +155,19 @@ type InvoiceV2 struct {
 	UniqueID      string `json:"unique_id"`
 
 	// Extracted data (GPT-4 Vision result)
-	InvoiceDate   *time.Time `json:"invoice_date,omitempty"`
-	InvoiceAmount float64    `json:"invoice_amount"`
-	SellerName    string     `json:"seller_name"`
-	SellerTaxID   string     `json:"seller_tax_id"`
-	BuyerName     string     `json:"buyer_name"`
-	BuyerTaxID    string     `json:"buyer_tax_id"`
-	ExtractedData string     `json:"extracted_data"`
+	InvoiceDate         *time.Time `json:"invoice_date,omitempty"`
+	InvoiceAmountCents  int64      `json:"invoice_amount_cents"`  // Amount in cents (分)
+	InvoiceAmount       float64    `json:"invoice_amount"`        // Deprecated: use InvoiceAmountCents
+	SellerName          string     `json:"seller_name"`
+	SellerTaxID         string     `json:"seller_tax_id"`
+	BuyerName           string     `json:"buyer_name"`
+	BuyerTaxID          string     `json:"buyer_tax_id"`
+	ExtractedData       string     `json:"extracted_data"`
 
 	CreatedAt time.Time `json:"created_at"`
+}
+
+// AmountYuan returns the invoice amount in yuan (元) for display purposes.
+func (i *InvoiceV2) AmountYuan() float64 {
+	return float64(i.InvoiceAmountCents) / 100.0
 }

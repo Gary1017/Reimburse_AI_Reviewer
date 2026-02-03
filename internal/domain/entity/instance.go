@@ -23,7 +23,8 @@ type ReimbursementItem struct {
 	InstanceID        int64      `json:"instance_id"`
 	ItemType          string     `json:"item_type"`
 	Description       string     `json:"description"`
-	Amount            float64    `json:"amount"`
+	AmountCents       int64      `json:"amount_cents"`        // Amount in cents (分) to avoid float precision issues
+	Amount            float64    `json:"amount"`              // Deprecated: use AmountCents instead
 	Currency          string     `json:"currency"`
 	ReceiptAttachment string     `json:"receipt_attachment"`
 	AIPriceCheck      string     `json:"ai_price_check"`
@@ -32,4 +33,9 @@ type ReimbursementItem struct {
 	Vendor            string     `json:"vendor,omitempty"`
 	BusinessPurpose   string     `json:"business_purpose,omitempty"`
 	CreatedAt         time.Time  `json:"created_at"`
+}
+
+// AmountYuan returns the amount in yuan (元) for display purposes.
+func (i *ReimbursementItem) AmountYuan() float64 {
+	return float64(i.AmountCents) / 100.0
 }

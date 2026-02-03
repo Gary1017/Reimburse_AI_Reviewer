@@ -195,15 +195,15 @@ func (s *invoiceListServiceImpl) recalculateTotals(ctx context.Context, invoiceL
 		return fmt.Errorf("get invoices: %w", err)
 	}
 
-	// Calculate totals
+	// Calculate totals (amount in cents)
 	count := len(invoices)
-	var totalAmount float64
+	var totalAmountCents int64
 	for _, inv := range invoices {
-		totalAmount += inv.InvoiceAmount
+		totalAmountCents += inv.InvoiceAmountCents
 	}
 
 	// Update the invoice list
-	if err := s.invoiceListRepo.UpdateTotals(ctx, invoiceListID, count, totalAmount); err != nil {
+	if err := s.invoiceListRepo.UpdateTotals(ctx, invoiceListID, count, totalAmountCents); err != nil {
 		return fmt.Errorf("update invoice list totals: %w", err)
 	}
 
