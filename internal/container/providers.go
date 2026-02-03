@@ -20,6 +20,7 @@ import (
 	"github.com/garyjia/ai-reimbursement/internal/infrastructure/persistence/sqlite"
 	"github.com/garyjia/ai-reimbursement/internal/infrastructure/storage"
 	"github.com/garyjia/ai-reimbursement/internal/infrastructure/worker"
+	"github.com/garyjia/ai-reimbursement/pkg/database"
 	"go.uber.org/zap"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -47,6 +48,7 @@ type StorageBundle struct {
 
 // ProvideDatabase creates database connection and transaction manager.
 // Returns DatabaseBundle containing sql.DB and TransactionManager.
+// Also runs any pending database migrations automatically.
 func ProvideDatabase(cfg *DatabaseConfig, logger *zap.Logger) (*DatabaseBundle, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("database config is required")
@@ -70,6 +72,18 @@ func ProvideDatabase(cfg *DatabaseConfig, logger *zap.Logger) (*DatabaseBundle, 
 	if err := sqlDB.Ping(); err != nil {
 		sqlDB.Close()
 		return nil, fmt.Errorf("failed to ping database: %w", err)
+	}
+
+	// Run database migrations if migrations directory is configured
+	if cfg.MigrationsDir != "" {
+		// Create a database.DB wrapper for the migrator
+		dbWrapper := &database.DB{DB: sqlDB}
+		migrator := database.NewMigrator(dbWrapper, logger)
+
+		if err := migrator.RunMigrations(cfg.MigrationsDir); err != nil {
+			sqlDB.Close()
+			return nil, fmt.Errorf("failed to run migrations: %w", err)
+		}
 	}
 
 	// Create transaction manager wrapper
