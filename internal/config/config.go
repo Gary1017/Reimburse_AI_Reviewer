@@ -44,7 +44,8 @@ type LarkConfig struct {
 	AppSecret       string        `mapstructure:"app_secret"`
 	ApprovalCode    string        `mapstructure:"approval_code"`
 	APITimeout      time.Duration `mapstructure:"api_timeout"`
-	AIApproverOpenID string       `mapstructure:"ai_approver_open_id"` // Open ID of person accountable for AI decisions
+	AIApproverOpenID string       `mapstructure:"ai_approver_open_id"`  // Open ID of person accountable for AI decisions
+	AIApproverUserID string       `mapstructure:"ai_approver_user_id"` // User ID of person accountable for AI decisions
 }
 
 // OpenAIConfig holds OpenAI API configuration
@@ -166,6 +167,7 @@ func bindEnvVars() {
 	viper.BindEnv("lark.app_secret", "LARK_APP_SECRET")
 	viper.BindEnv("lark.approval_code", "LARK_APPROVAL_CODE")
 	viper.BindEnv("lark.ai_approver_open_id", "AI_APPROVER_OPEN_ID")
+	viper.BindEnv("lark.ai_approver_user_id", "AI_APPROVER_USER_ID")
 	viper.BindEnv("openai.api_key", "OPENAI_API_KEY")
 	viper.BindEnv("email.accountant_email", "ACCOUNTANT_EMAIL")
 	viper.BindEnv("voucher.company_name", "COMPANY_NAME")

@@ -33,6 +33,11 @@ type AttachmentRepository interface {
 	GetPending(ctx context.Context, limit int) ([]*entity.Attachment, error)
 	MarkCompleted(ctx context.Context, id int64, filePath string, fileSize int64) error
 	UpdateStatus(ctx context.Context, id int64, status, errorMsg string) error
+	GetCompletedUnprocessed(ctx context.Context, limit int) ([]*entity.Attachment, error)
+	UpdateItemID(ctx context.Context, attachmentID int64, itemID int64) error
+	UpdateFileType(ctx context.Context, attachmentID int64, fileType string) error
+	GetByInstanceIDAndStatus(ctx context.Context, instanceID int64, status string) ([]*entity.Attachment, error)
+	CountByInstanceIDAndStatuses(ctx context.Context, instanceID int64, statuses []string) (int, error)
 }
 
 // HistoryRepository defines persistence operations for ApprovalHistory

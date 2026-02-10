@@ -19,10 +19,12 @@ func (c *Config) ToContainerConfig() *container.Config {
 			MigrationsDir:   c.Database.MigrationsDir,
 		},
 		Lark: container.LarkConfig{
-			AppID:        c.Lark.AppID,
-			AppSecret:    c.Lark.AppSecret,
-			ApprovalCode: c.Lark.ApprovalCode,
-			APITimeout:   c.Lark.APITimeout,
+			AppID:            c.Lark.AppID,
+			AppSecret:        c.Lark.AppSecret,
+			ApprovalCode:     c.Lark.ApprovalCode,
+			APITimeout:       c.Lark.APITimeout,
+			AIApproverOpenID: c.Lark.AIApproverOpenID,
+			AIApproverUserID: c.Lark.AIApproverUserID,
 		},
 		OpenAI: container.OpenAIConfig{
 			APIKey:                  c.OpenAI.APIKey,

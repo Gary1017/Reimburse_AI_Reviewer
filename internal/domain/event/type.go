@@ -11,6 +11,13 @@ const (
 	TypeAttachmentReady  Type = "attachment.ready"
 	TypeAuditCompleted   Type = "audit.completed"
 	TypeVoucherGenerated Type = "voucher.generated"
+
+	// New event types for task and data pipeline
+	TypeTaskCreated       Type = "task.created"
+	TypeTaskStatusChanged Type = "task.status_changed"
+	TypeDataReady         Type = "instance.data_ready"
+	TypeMatchingCompleted Type = "matching.completed"
+	TypeInvoiceExtracted  Type = "invoice.extracted"
 )
 
 // String returns the string representation of the event type
@@ -27,7 +34,12 @@ func (t Type) IsValid() bool {
 		TypeStatusChanged,
 		TypeAttachmentReady,
 		TypeAuditCompleted,
-		TypeVoucherGenerated:
+		TypeVoucherGenerated,
+		TypeTaskCreated,
+		TypeTaskStatusChanged,
+		TypeDataReady,
+		TypeMatchingCompleted,
+		TypeInvoiceExtracted:
 		return true
 	default:
 		return false

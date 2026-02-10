@@ -60,6 +60,12 @@ type LarkConfig struct {
 
 	// APITimeout is the timeout for API calls
 	APITimeout time.Duration
+
+	// AIApproverOpenID is the Lark Open ID of the person accountable for AI decisions
+	AIApproverOpenID string
+
+	// AIApproverUserID is the Lark User ID of the person accountable for AI decisions
+	AIApproverUserID string
 }
 
 // OpenAIConfig holds OpenAI API settings.
@@ -190,6 +196,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Lark.ApprovalCode == "" {
 		return fmt.Errorf("lark.approval_code is required")
+	}
+	if c.Lark.AIApproverOpenID == "" {
+		return fmt.Errorf("lark.ai_approver_open_id is required (AI decisions must be accountable to a person)")
 	}
 
 	// Validate OpenAI configuration

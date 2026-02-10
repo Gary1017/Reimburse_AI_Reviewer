@@ -255,8 +255,18 @@ func (e *engineImpl) mapEventToTrigger(evt *event.Event) (domainwf.Trigger, erro
 		// Status changed events don't trigger transitions (they're results of transitions)
 		return "", nil
 
+	case event.TypeDataReady:
+		return domainwf.TriggerDataReady, nil
+
 	case event.TypeAttachmentReady:
 		// Attachment ready events don't directly trigger state transitions
+		return "", nil
+
+	case event.TypeTaskCreated,
+		event.TypeTaskStatusChanged,
+		event.TypeMatchingCompleted,
+		event.TypeInvoiceExtracted:
+		// These events are handled by dedicated services, not state transitions
 		return "", nil
 
 	default:

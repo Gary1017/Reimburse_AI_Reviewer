@@ -9,8 +9,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/garyjia/ai-reimbursement/internal/application/dispatcher"
 	"github.com/garyjia/ai-reimbursement/internal/application/port"
 	"github.com/garyjia/ai-reimbursement/internal/domain/entity"
+	"github.com/garyjia/ai-reimbursement/internal/domain/event"
 	"go.uber.org/zap"
 )
 
@@ -38,9 +40,10 @@ type InvoiceWorker struct {
 	// Port dependencies
 	attachmentRepo port.AttachmentRepository
 	itemRepo       port.ItemRepository
-	invoiceRepo    port.InvoiceRepository
+	invoiceV2Repo  port.InvoiceV2Repository
 	fileStorage    port.FileStorage
 	aiAuditor      port.AIAuditor
+	dispatcher     dispatcher.Dispatcher
 	logger         *zap.Logger
 
 	// Runtime state
@@ -60,18 +63,20 @@ func NewInvoiceWorker(
 	config InvoiceWorkerConfig,
 	attachmentRepo port.AttachmentRepository,
 	itemRepo port.ItemRepository,
-	invoiceRepo port.InvoiceRepository,
+	invoiceV2Repo port.InvoiceV2Repository,
 	fileStorage port.FileStorage,
 	aiAuditor port.AIAuditor,
+	eventDispatcher dispatcher.Dispatcher,
 	logger *zap.Logger,
 ) *InvoiceWorker {
 	return &InvoiceWorker{
 		config:         config,
 		attachmentRepo: attachmentRepo,
 		itemRepo:       itemRepo,
-		invoiceRepo:    invoiceRepo,
+		invoiceV2Repo:  invoiceV2Repo,
 		fileStorage:    fileStorage,
 		aiAuditor:      aiAuditor,
+		dispatcher:     eventDispatcher,
 		logger:         logger,
 		lastProcessed:  time.Now(),
 		startTime:      time.Now(),
@@ -162,13 +167,44 @@ func (w *InvoiceWorker) processCompletedAttachments() error {
 	}
 
 	// Get attachments with status "COMPLETED" (downloaded but not yet processed)
-	// Note: The port interface GetPending gets attachments with "PENDING" status
-	// We need to get completed attachments for processing
-	// For now, we'll use GetByInstanceID and filter in-memory (this should be enhanced in port interface)
+	attachments, err := w.attachmentRepo.GetCompletedUnprocessed(ctx, w.config.BatchSize)
+	if err != nil {
+		return fmt.Errorf("failed to get completed unprocessed attachments: %w", err)
+	}
 
-	// This is a placeholder - the actual implementation would need a GetCompleted method
-	// in the AttachmentRepository port interface
-	// For now, return nil to allow compilation
+	if len(attachments) == 0 {
+		return nil
+	}
+
+	w.logger.Debug("Processing batch of completed attachments",
+		zap.Int("count", len(attachments)))
+
+	// Track affected instances for completion check
+	affectedInstances := make(map[int64]bool)
+
+	// Process each attachment
+	for _, att := range attachments {
+		if err := w.processAttachment(ctx, att); err != nil {
+			w.logger.Error("Failed to process attachment",
+				zap.Int64("attachment_id", att.ID),
+				zap.String("file_name", att.FileName),
+				zap.Error(err))
+			w.mu.Lock()
+			w.failedCount++
+			w.mu.Unlock()
+		} else {
+			w.mu.Lock()
+			w.processedCount++
+			w.mu.Unlock()
+			affectedInstances[att.InstanceID] = true
+		}
+	}
+
+	// Check completion status for all affected instances
+	for instanceID := range affectedInstances {
+		w.checkInstanceCompletion(ctx, instanceID)
+	}
+
 	return nil
 }
 
@@ -184,25 +220,30 @@ func (w *InvoiceWorker) processAttachment(ctx context.Context, att *entity.Attac
 		zap.String("file_path", att.FilePath))
 
 	// Mark as processing
-	if err := w.attachmentRepo.UpdateStatus(ctx, att.ID, "PROCESSING", ""); err != nil {
+	if err := w.attachmentRepo.UpdateStatus(ctx, att.ID, entity.AttachmentStatusProcessing, ""); err != nil {
 		return fmt.Errorf("failed to update status to PROCESSING: %w", err)
 	}
 
-	// Check if file is supported
+	// Check if file type is supported
 	ext := strings.ToLower(filepath.Ext(att.FileName))
 	if ext != ".pdf" && ext != ".jpg" && ext != ".jpeg" && ext != ".png" {
 		errMsg := fmt.Sprintf("unsupported file type: %s", ext)
 		w.logger.Warn("Skipping unsupported file type",
 			zap.Int64("attachment_id", att.ID),
 			zap.String("extension", ext))
-		return w.attachmentRepo.UpdateStatus(ctx, att.ID, "PROCESSED", errMsg)
+
+		// Mark as OTHER file type and PROCESSED
+		if err := w.attachmentRepo.UpdateFileType(ctx, att.ID, entity.FileTypeOther); err != nil {
+			w.logger.Error("Failed to update file type", zap.Error(err))
+		}
+		return w.attachmentRepo.UpdateStatus(ctx, att.ID, entity.AttachmentStatusProcessed, errMsg)
 	}
 
 	// Step 1: Read file content
 	fileContent, err := w.fileStorage.Read(processCtx, att.FilePath)
 	if err != nil {
 		errMsg := fmt.Sprintf("failed to read file: %v", err)
-		_ = w.attachmentRepo.UpdateStatus(ctx, att.ID, "AUDIT_FAILED", errMsg)
+		_ = w.attachmentRepo.UpdateStatus(ctx, att.ID, entity.AttachmentStatusAuditFailed, errMsg)
 		return fmt.Errorf("%s", errMsg)
 	}
 
@@ -214,7 +255,26 @@ func (w *InvoiceWorker) processAttachment(ctx context.Context, att *entity.Attac
 		w.logger.Error("Failed to extract invoice data",
 			zap.Int64("attachment_id", att.ID),
 			zap.Error(err))
-		return w.attachmentRepo.UpdateStatus(ctx, att.ID, "AUDIT_FAILED", errMsg)
+
+		// Mark as OTHER file type and AUDIT_FAILED
+		if err := w.attachmentRepo.UpdateFileType(ctx, att.ID, entity.FileTypeOther); err != nil {
+			w.logger.Error("Failed to update file type", zap.Error(err))
+		}
+		return w.attachmentRepo.UpdateStatus(ctx, att.ID, entity.AttachmentStatusAuditFailed, errMsg)
+	}
+
+	// Step 3: Check if extraction has invoice code and number
+	if extractedData.InvoiceCode == "" || extractedData.InvoiceNumber == "" {
+		w.logger.Info("Extraction succeeded but no invoice code/number found",
+			zap.Int64("attachment_id", att.ID),
+			zap.String("invoice_code", extractedData.InvoiceCode),
+			zap.String("invoice_number", extractedData.InvoiceNumber))
+
+		// Mark as OTHER file type and PROCESSED
+		if err := w.attachmentRepo.UpdateFileType(ctx, att.ID, entity.FileTypeOther); err != nil {
+			w.logger.Error("Failed to update file type", zap.Error(err))
+		}
+		return w.attachmentRepo.UpdateStatus(ctx, att.ID, entity.AttachmentStatusProcessed, "not an invoice")
 	}
 
 	w.logger.Info("Invoice data extracted",
@@ -223,99 +283,119 @@ func (w *InvoiceWorker) processAttachment(ctx context.Context, att *entity.Attac
 		zap.String("invoice_number", extractedData.InvoiceNumber),
 		zap.Float64("total_amount", extractedData.TotalAmount))
 
-	// Step 3: Get reimbursement item for context
-	item, err := w.itemRepo.GetByID(processCtx, att.ItemID)
-	if err != nil {
-		w.logger.Warn("Failed to get reimbursement item", zap.Error(err))
-		// Continue with default values
-		item = &entity.ReimbursementItem{
-			Amount:   extractedData.TotalAmount,
-			ItemType: "OTHER",
+	// Step 4: Save InvoiceV2 record
+	uniqueID := generateUniqueID(extractedData.InvoiceCode, extractedData.InvoiceNumber)
+
+	// Parse invoice date
+	var invoiceDate *time.Time
+	if extractedData.InvoiceDate != "" {
+		if t, err := time.Parse("2006-01-02", extractedData.InvoiceDate); err == nil {
+			invoiceDate = &t
 		}
 	}
 
-	// Step 4: Perform AI audits
-	policyResult, err := w.aiAuditor.AuditPolicy(processCtx, item, extractedData)
-	if err != nil {
-		errMsg := fmt.Sprintf("policy audit failed: %v", err)
-		w.logger.Error("Policy audit failed",
-			zap.Int64("attachment_id", att.ID),
-			zap.Error(err))
-		return w.attachmentRepo.UpdateStatus(ctx, att.ID, "AUDIT_FAILED", errMsg)
+	// Convert amount to cents (分)
+	invoiceAmountCents := int64(extractedData.TotalAmount * 100)
+
+	// Serialize extracted data
+	extractedDataJSON, _ := json.Marshal(extractedData.ExtractedData)
+
+	invoiceV2 := &entity.InvoiceV2{
+		InstanceID:         att.InstanceID,
+		AttachmentID:       att.ID,
+		ItemID:             att.ItemID,
+		InvoiceCode:        extractedData.InvoiceCode,
+		InvoiceNumber:      extractedData.InvoiceNumber,
+		UniqueID:           uniqueID,
+		InvoiceDate:        invoiceDate,
+		InvoiceAmountCents: invoiceAmountCents,
+		SellerName:         extractedData.SellerName,
+		SellerTaxID:        extractedData.SellerTaxID,
+		BuyerName:          extractedData.BuyerName,
+		BuyerTaxID:         extractedData.BuyerTaxID,
+		ExtractedData:      string(extractedDataJSON),
 	}
 
-	priceResult, err := w.aiAuditor.AuditPrice(processCtx, item, extractedData)
-	if err != nil {
-		errMsg := fmt.Sprintf("price audit failed: %v", err)
-		w.logger.Error("Price audit failed",
+	if err := w.invoiceV2Repo.Create(processCtx, invoiceV2); err != nil {
+		errMsg := fmt.Sprintf("failed to save invoice: %v", err)
+		w.logger.Error("Failed to save InvoiceV2 record",
 			zap.Int64("attachment_id", att.ID),
 			zap.Error(err))
-		return w.attachmentRepo.UpdateStatus(ctx, att.ID, "AUDIT_FAILED", errMsg)
+		_ = w.attachmentRepo.UpdateStatus(ctx, att.ID, entity.AttachmentStatusAuditFailed, errMsg)
+		return fmt.Errorf("%s", errMsg)
 	}
 
-	w.logger.Info("Invoice audit completed",
+	// Step 5: Update attachment file_type to INVOICE
+	if err := w.attachmentRepo.UpdateFileType(ctx, att.ID, entity.FileTypeInvoice); err != nil {
+		w.logger.Error("Failed to update file type to INVOICE",
+			zap.Int64("attachment_id", att.ID),
+			zap.Error(err))
+	}
+
+	// Step 6: Mark attachment as PROCESSED
+	if err := w.attachmentRepo.UpdateStatus(ctx, att.ID, entity.AttachmentStatusProcessed, ""); err != nil {
+		return fmt.Errorf("failed to update status to PROCESSED: %w", err)
+	}
+
+	w.logger.Info("Attachment processed successfully",
 		zap.Int64("attachment_id", att.ID),
-		zap.Bool("policy_compliant", policyResult.Compliant),
-		zap.Bool("price_reasonable", priceResult.Reasonable))
-
-	// Step 5: Save invoice record
-	if extractedData.InvoiceCode != "" && extractedData.InvoiceNumber != "" {
-		uniqueID := generateUniqueID(extractedData.InvoiceCode, extractedData.InvoiceNumber)
-
-		// Check for duplicates
-		existing, err := w.invoiceRepo.GetByUniqueID(processCtx, uniqueID)
-		if err == nil && existing != nil {
-			w.logger.Warn("Duplicate invoice detected",
-				zap.String("unique_id", uniqueID),
-				zap.Int64("duplicate_invoice_id", existing.ID))
-			policyResult.Violations = append(policyResult.Violations,
-				fmt.Sprintf("DUPLICATE: Invoice was previously submitted (ID: %d)", existing.ID))
-			policyResult.Compliant = false
-		} else {
-			// Save new invoice
-			extractedDataJSON, _ := json.Marshal(extractedData.ExtractedData)
-
-			// Parse invoice date
-			var invoiceDate *time.Time
-			if extractedData.InvoiceDate != "" {
-				if t, err := time.Parse("2006-01-02", extractedData.InvoiceDate); err == nil {
-					invoiceDate = &t
-				}
-			}
-
-			invoice := &entity.Invoice{
-				InvoiceCode:   extractedData.InvoiceCode,
-				InvoiceNumber: extractedData.InvoiceNumber,
-				UniqueID:      uniqueID,
-				InstanceID:    att.InstanceID,
-				FilePath:      att.FilePath,
-				InvoiceAmount: extractedData.TotalAmount,
-				InvoiceDate:   invoiceDate,
-				SellerName:    extractedData.SellerName,
-				SellerTaxID:   extractedData.SellerTaxID,
-				BuyerName:     extractedData.BuyerName,
-				BuyerTaxID:    extractedData.BuyerTaxID,
-				ExtractedData: string(extractedDataJSON),
-			}
-			if err := w.invoiceRepo.Create(processCtx, invoice); err != nil {
-				w.logger.Warn("Failed to save invoice record", zap.Error(err))
-			}
-		}
-	}
-
-	// Step 6: Serialize audit results
-	auditResults := map[string]interface{}{
-		"policy": policyResult,
-		"price":  priceResult,
-	}
-	auditResultJSON, _ := json.Marshal(auditResults)
-
-	// Update attachment with audit result
-	if err := w.attachmentRepo.UpdateStatus(ctx, att.ID, "PROCESSED", string(auditResultJSON)); err != nil {
-		return err
-	}
+		zap.Int64("invoice_id", invoiceV2.ID),
+		zap.String("unique_id", uniqueID))
 
 	return nil
+}
+
+// checkInstanceCompletion checks if all attachments for an instance are processed
+// and emits TypeInvoiceExtracted event if complete
+func (w *InvoiceWorker) checkInstanceCompletion(ctx context.Context, instanceID int64) {
+	// Get all attachments for the instance
+	totalAttachments, err := w.attachmentRepo.GetByInstanceID(ctx, instanceID)
+	if err != nil {
+		w.logger.Error("Failed to get attachments for instance",
+			zap.Int64("instance_id", instanceID),
+			zap.Error(err))
+		return
+	}
+
+	if len(totalAttachments) == 0 {
+		w.logger.Debug("No attachments found for instance",
+			zap.Int64("instance_id", instanceID))
+		return
+	}
+
+	// Count processed attachments (PROCESSED or AUDIT_FAILED)
+	processedCount, err := w.attachmentRepo.CountByInstanceIDAndStatuses(ctx, instanceID,
+		[]string{entity.AttachmentStatusProcessed, entity.AttachmentStatusAuditFailed})
+	if err != nil {
+		w.logger.Error("Failed to count processed attachments",
+			zap.Int64("instance_id", instanceID),
+			zap.Error(err))
+		return
+	}
+
+	w.logger.Debug("Checking instance completion",
+		zap.Int64("instance_id", instanceID),
+		zap.Int("total_attachments", len(totalAttachments)),
+		zap.Int("processed_count", processedCount))
+
+	// If all attachments are processed, emit event
+	if processedCount >= len(totalAttachments) && len(totalAttachments) > 0 {
+		w.logger.Info("All attachments processed for instance, emitting event",
+			zap.Int64("instance_id", instanceID),
+			zap.Int("total_attachments", len(totalAttachments)))
+
+		if w.dispatcher != nil {
+			evt := event.NewEvent(event.TypeInvoiceExtracted, instanceID, "", map[string]interface{}{
+				"instance_id":       instanceID,
+				"total_attachments": len(totalAttachments),
+				"processed_count":   processedCount,
+			})
+			w.dispatcher.DispatchAsync(ctx, evt)
+		} else {
+			w.logger.Warn("Event dispatcher is nil, cannot emit invoice.extracted event",
+				zap.Int64("instance_id", instanceID))
+		}
+	}
 }
 
 // getMimeType returns MIME type for file extension

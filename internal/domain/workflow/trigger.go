@@ -5,6 +5,8 @@ type Trigger string
 
 const (
 	TriggerSubmit          Trigger = "SUBMIT"
+	TriggerDataReady       Trigger = "DATA_READY"
+	TriggerStartReview     Trigger = "START_REVIEW"
 	TriggerStartAudit      Trigger = "START_AUDIT"
 	TriggerCompleteAudit   Trigger = "COMPLETE_AUDIT"
 	TriggerRequestReview   Trigger = "REQUEST_REVIEW"

@@ -6,6 +6,20 @@ import (
 	"github.com/garyjia/ai-reimbursement/internal/domain/entity"
 )
 
+// LarkTaskInfo represents a task from Lark approval instance
+type LarkTaskInfo struct {
+	TaskID       string
+	UserID       string
+	OpenID       string
+	Status       string
+	NodeID       string
+	NodeName     string
+	CustomNodeID string
+	Type         string
+	StartTime    int64
+	EndTime      int64
+}
+
 // LarkInstanceDetail represents details fetched from Lark API
 type LarkInstanceDetail struct {
 	InstanceCode string
@@ -16,6 +30,7 @@ type LarkInstanceDetail struct {
 	FormData     string
 	StartTime    int64
 	EndTime      int64
+	TaskList     []LarkTaskInfo
 }
 
 // ApproverInfo represents an approver from Lark
@@ -83,4 +98,46 @@ type AIAuditor interface {
 	AuditPolicy(ctx context.Context, item *entity.ReimbursementItem, invoiceData *InvoiceExtractionResult) (*PolicyAuditResult, error)
 	AuditPrice(ctx context.Context, item *entity.ReimbursementItem, invoiceData *InvoiceExtractionResult) (*PriceAuditResult, error)
 	ExtractInvoice(ctx context.Context, imageData []byte, mimeType string) (*InvoiceExtractionResult, error)
+}
+
+// LarkTaskApprover defines Lark task approve/reject operations
+type LarkTaskApprover interface {
+	ApproveTask(ctx context.Context, approvalCode, instanceCode, userID, taskID, comment string) error
+	RejectTask(ctx context.Context, approvalCode, instanceCode, userID, taskID, comment string) error
+}
+
+// InvoiceItemMatch represents a single invoice-to-item match result
+type InvoiceItemMatch struct {
+	AttachmentID int64
+	ItemID       int64
+	InvoiceID    int64
+	Confidence   float64
+	Reasoning    string
+}
+
+// InvoiceMatchingResult represents the result of batch invoice-to-item matching
+type InvoiceMatchingResult struct {
+	Matches    []InvoiceItemMatch
+	Confidence float64
+	Reasoning  string
+}
+
+// AIInvoiceMatcher defines AI-powered invoice-to-item matching operations
+type AIInvoiceMatcher interface {
+	MatchInvoicesToItems(ctx context.Context, items []*entity.ReimbursementItem, invoices []*entity.InvoiceV2) (*InvoiceMatchingResult, error)
+}
+
+// CommentGenerationRequest holds data for generating approval/rejection comments
+type CommentGenerationRequest struct {
+	Decision   string
+	Items      []*entity.ReimbursementItem
+	Invoices   []*entity.InvoiceV2
+	Violations []string
+	AIFindings []string
+	TotalAmount int64
+}
+
+// AICommentGenerator defines AI-powered comment generation operations
+type AICommentGenerator interface {
+	GenerateComment(ctx context.Context, req *CommentGenerationRequest) (string, error)
 }

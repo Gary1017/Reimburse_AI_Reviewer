@@ -19,7 +19,12 @@ func NewEventDispatcher(eventProcessor *EventProcessor, logger *zap.Logger) *dis
 	// This will handle all approval events: create, approve, reject, status_changed
 	d.OnCustomizedEvent("approval_instance", eventProcessor.HandleCustomizedEvent)
 
-	logger.Info("Event dispatcher created with approval_instance handler registered")
+	// Register custom event handler for approval task events
+	// The event key for approval tasks is "approval_task"
+	// This will handle task events: created (PENDING), approved, rejected, done
+	d.OnCustomizedEvent("approval_task", eventProcessor.HandleTaskEvent)
+
+	logger.Info("Event dispatcher created with approval_instance and approval_task handlers registered")
 
 	return d
 }

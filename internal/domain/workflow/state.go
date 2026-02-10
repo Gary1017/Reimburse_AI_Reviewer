@@ -6,6 +6,7 @@ type State string
 const (
 	StateCreated           State = "CREATED"
 	StatePending           State = "PENDING"
+	StateDataReady         State = "DATA_READY"
 	StateAIAuditing        State = "AI_AUDITING"
 	StateAIAudited         State = "AI_AUDITED"
 	StateInReview          State = "IN_REVIEW"
@@ -19,6 +20,7 @@ const (
 var validStates = map[State]bool{
 	StateCreated:           true,
 	StatePending:           true,
+	StateDataReady:         true,
 	StateAIAuditing:        true,
 	StateAIAudited:         true,
 	StateInReview:          true,

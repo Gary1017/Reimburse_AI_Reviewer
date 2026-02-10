@@ -11,11 +11,17 @@ func BuildReimbursementStateMachine(initialState domainwf.State) domainwf.StateM
 	// CREATED state transitions
 	builder.Configure(domainwf.StateCreated).
 		Permit(domainwf.TriggerSubmit, domainwf.StatePending).
-		Permit(domainwf.TriggerStartAudit, domainwf.StateAIAuditing)
+		Permit(domainwf.TriggerDataReady, domainwf.StateDataReady).
+		Permit(domainwf.TriggerStartAudit, domainwf.StateAIAuditing) // backward compat
 
 	// PENDING state transitions
 	builder.Configure(domainwf.StatePending).
 		Permit(domainwf.TriggerStartAudit, domainwf.StateAIAuditing).
+		Permit(domainwf.TriggerReject, domainwf.StateRejected)
+
+	// DATA_READY state transitions
+	builder.Configure(domainwf.StateDataReady).
+		Permit(domainwf.TriggerStartReview, domainwf.StateAIAuditing).
 		Permit(domainwf.TriggerReject, domainwf.StateRejected)
 
 	// AI_AUDITING state transitions

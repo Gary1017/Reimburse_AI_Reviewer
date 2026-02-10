@@ -6,13 +6,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"time"
 
 	"github.com/garyjia/ai-reimbursement/internal/application/dispatcher"
 	"github.com/garyjia/ai-reimbursement/internal/application/port"
 	"github.com/garyjia/ai-reimbursement/internal/application/service"
 	"github.com/garyjia/ai-reimbursement/internal/application/workflow"
-	"github.com/garyjia/ai-reimbursement/internal/domain/entity"
 	"github.com/garyjia/ai-reimbursement/internal/domain/event"
 	infraLark "github.com/garyjia/ai-reimbursement/internal/infrastructure/external/lark"
 	"github.com/garyjia/ai-reimbursement/internal/infrastructure/external/openai"
@@ -313,6 +311,7 @@ type WorkflowDeps struct {
 	Repos      *RepositoryBundle
 	TxManager  port.TransactionManager
 	Dispatcher dispatcher.Dispatcher
+	Services   *ServiceBundle
 	Logger     *zap.Logger
 }
 
@@ -340,10 +339,13 @@ func ProvideWorkflowEngine(deps *WorkflowDeps) (workflow.WorkflowEngine, error) 
 		workflow.WithDispatcher(deps.Dispatcher),
 	)
 
-	// Register instance creation handler (runs BEFORE workflow engine)
-	// This handler creates the instance record when instance.created events arrive
-	instanceCreationHandler := createInstanceCreationHandler(deps.Repos.Instance, deps.Repos.History, deps.TxManager, deps.Logger)
-	deps.Dispatcher.SubscribeNamed(event.TypeInstanceCreated, "instance_creator", instanceCreationHandler)
+	// Register instance creation handler using InstanceCreationService
+	if deps.Services != nil && deps.Services.InstanceCreation != nil {
+		svc := deps.Services.InstanceCreation
+		deps.Dispatcher.SubscribeNamed(event.TypeInstanceCreated, "instance_creator", func(ctx context.Context, evt *event.Event) error {
+			return svc.HandleInstanceCreated(ctx, evt.LarkInstanceID, evt.Payload)
+		})
+	}
 
 	// Register workflow engine as event handler for all relevant event types
 	deps.Dispatcher.SubscribeNamed(event.TypeInstanceCreated, "workflow_engine", engine.HandleEvent)
@@ -351,6 +353,26 @@ func ProvideWorkflowEngine(deps *WorkflowDeps) (workflow.WorkflowEngine, error) 
 	deps.Dispatcher.SubscribeNamed(event.TypeInstanceRejected, "workflow_engine", engine.HandleEvent)
 	deps.Dispatcher.SubscribeNamed(event.TypeAuditCompleted, "workflow_engine", engine.HandleEvent)
 	deps.Dispatcher.SubscribeNamed(event.TypeVoucherGenerated, "workflow_engine", engine.HandleEvent)
+	deps.Dispatcher.SubscribeNamed(event.TypeDataReady, "workflow_engine", engine.HandleEvent)
+
+	// Register matching service handler for InvoiceExtracted events
+	if deps.Services != nil && deps.Services.Matching != nil {
+		matchSvc := deps.Services.Matching
+		deps.Dispatcher.SubscribeNamed(event.TypeInvoiceExtracted, "matching_service", func(ctx context.Context, evt *event.Event) error {
+			return matchSvc.MatchInstance(ctx, evt.InstanceID)
+		})
+	}
+
+	// Register task event handler for review pipeline (two-path trigger)
+	if deps.Services != nil && deps.Services.TaskEventHandler != nil {
+		teh := deps.Services.TaskEventHandler
+		deps.Dispatcher.SubscribeNamed(event.TypeTaskCreated, "task_event_handler", func(ctx context.Context, evt *event.Event) error {
+			return teh.HandleTaskEvent(ctx, evt.LarkInstanceID, evt.Payload)
+		})
+		deps.Dispatcher.SubscribeNamed(event.TypeDataReady, "data_ready_review", func(ctx context.Context, evt *event.Event) error {
+			return teh.HandleDataReady(ctx, evt.InstanceID)
+		})
+	}
 
 	return engine, nil
 }
@@ -361,6 +383,7 @@ type WorkerDeps struct {
 	LarkBundle    *LarkBundle
 	StorageBundle *StorageBundle
 	AIAuditor     port.AIAuditor
+	Dispatcher    dispatcher.Dispatcher
 	WorkerCfg     *WorkerConfig
 	Logger        *zap.Logger
 }
@@ -417,9 +440,10 @@ func ProvideWorkers(deps *WorkerDeps) (*worker.WorkerManager, error) {
 		invoiceCfg,
 		deps.Repos.Attachment,
 		deps.Repos.Item,
-		deps.Repos.Invoice,
+		deps.Repos.InvoiceV2,
 		deps.StorageBundle.FileStorage,
 		deps.AIAuditor,
+		deps.Dispatcher,
 		deps.Logger,
 	)
 	manager.Register(invoiceWorker)
@@ -427,87 +451,3 @@ func ProvideWorkers(deps *WorkerDeps) (*worker.WorkerManager, error) {
 	return manager, nil
 }
 
-// createInstanceCreationHandler creates a handler that creates instance records
-// when instance.created events arrive from Lark
-func createInstanceCreationHandler(
-	instanceRepo port.InstanceRepository,
-	historyRepo port.HistoryRepository,
-	txManager port.TransactionManager,
-	logger *zap.Logger,
-) func(context.Context, *event.Event) error {
-	return func(ctx context.Context, evt *event.Event) error {
-		if evt == nil {
-			return fmt.Errorf("event cannot be nil")
-		}
-
-		larkInstanceID := evt.LarkInstanceID
-		if larkInstanceID == "" {
-			return fmt.Errorf("event has no Lark instance ID")
-		}
-
-		logger.Info("Creating instance from Lark event",
-			zap.String("lark_instance_id", larkInstanceID),
-			zap.String("event_id", evt.ID))
-
-		// Check if instance already exists (idempotency)
-		existing, err := instanceRepo.GetByLarkInstanceID(ctx, larkInstanceID)
-		if err == nil && existing != nil {
-			logger.Info("Instance already exists, skipping creation",
-				zap.String("lark_instance_id", larkInstanceID),
-				zap.Int64("id", existing.ID))
-			return nil
-		}
-
-		// Create new instance with CREATED status
-		instance := &entity.ApprovalInstance{
-			LarkInstanceID: larkInstanceID,
-			Status:         "CREATED",
-			SubmissionTime: time.Now(),
-			CreatedAt:      time.Now(),
-			UpdatedAt:      time.Now(),
-		}
-
-		// Extract additional data from event payload if available
-		payload := evt.Payload
-		if userID, ok := payload["user_id"].(string); ok {
-			instance.ApplicantUserID = userID
-		}
-		if approvalCode, ok := payload["approval_code"].(string); ok {
-			// Store approval code if needed
-			logger.Debug("Approval code from event", zap.String("approval_code", approvalCode))
-		}
-
-		// Create instance and history in transaction
-		err = txManager.WithTransaction(ctx, func(txCtx context.Context) error {
-			if err := instanceRepo.Create(txCtx, instance); err != nil {
-				return fmt.Errorf("create instance: %w", err)
-			}
-
-			// Create initial history record
-			history := &entity.ApprovalHistory{
-				InstanceID:  instance.ID,
-				NewStatus:   "CREATED",
-				ActionType:  "SYSTEM",
-				Timestamp:   time.Now(),
-			}
-			if err := historyRepo.Create(txCtx, history); err != nil {
-				return fmt.Errorf("create history: %w", err)
-			}
-
-			return nil
-		})
-
-		if err != nil {
-			logger.Error("Failed to create instance",
-				zap.Error(err),
-				zap.String("lark_instance_id", larkInstanceID))
-			return fmt.Errorf("failed to create instance: %w", err)
-		}
-
-		logger.Info("Instance created successfully",
-			zap.String("lark_instance_id", larkInstanceID),
-			zap.Int64("id", instance.ID))
-
-		return nil
-	}
-}

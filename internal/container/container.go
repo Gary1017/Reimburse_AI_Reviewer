@@ -12,6 +12,7 @@ import (
 	"github.com/garyjia/ai-reimbursement/internal/application/service"
 	"github.com/garyjia/ai-reimbursement/internal/application/workflow"
 	infraLark "github.com/garyjia/ai-reimbursement/internal/infrastructure/external/lark"
+	"github.com/garyjia/ai-reimbursement/internal/infrastructure/external/openai"
 	"github.com/garyjia/ai-reimbursement/internal/infrastructure/persistence/sqlite"
 	"github.com/garyjia/ai-reimbursement/internal/infrastructure/worker"
 	"github.com/garyjia/ai-reimbursement/internal/interfaces/websocket"
@@ -90,6 +91,15 @@ type ServiceBundle struct {
 	InvoiceList        service.InvoiceListService
 	Task               service.TaskService
 	ReviewNotification service.ReviewNotificationService
+
+	// Step 1 pipeline services
+	InstanceCreation service.InstanceCreationService
+	Matching         service.MatchingService
+
+	// Step 2 review pipeline services
+	DeterministicCheck service.DeterministicCheckService
+	Review             service.ReviewService
+	TaskEventHandler   service.TaskEventHandler
 }
 
 // HealthStatus represents the health of all components.
@@ -433,11 +443,82 @@ func (c *Container) initDispatcherAndWorkflow() error {
 	}
 	c.dispatcher = disp
 
+	// Create Step 1 pipeline services that depend on the dispatcher
+	serviceLogger := &zapLoggerAdapter{logger: c.logger}
+
+	// Create FormParser for InstanceCreationService
+	formParser := infraLark.NewFormParserWithAttachmentSupport(c.logger)
+
+	// Create AI Matcher for MatchingService
+	aiMatcher := openai.NewMatcher(c.config.OpenAI.APIKey, c.config.OpenAI.Model, c.logger)
+
+	c.services.InstanceCreation = service.NewInstanceCreationService(
+		c.repositories.Instance,
+		c.repositories.Item,
+		c.repositories.Attachment,
+		c.repositories.Task,
+		c.larkAdapter,
+		formParser,
+		c.db,
+		c.config.Lark.AIApproverOpenID,
+		c.config.Lark.AIApproverUserID,
+		serviceLogger,
+	)
+
+	c.services.Matching = service.NewMatchingService(
+		c.repositories.Item,
+		c.repositories.InvoiceV2,
+		c.repositories.Attachment,
+		aiMatcher,
+		c.db,
+		c.dispatcher,
+		serviceLogger,
+	)
+
+	// Create Step 2 review pipeline services
+	taskAPI := infraLark.NewTaskAPI(c.larkClient, c.logger)
+	taskApprover := infraLark.NewTaskApproverAdapter(taskAPI, c.config.Lark.ApprovalCode, c.logger)
+	commentGen := openai.NewCommentGenerator(c.config.OpenAI.APIKey, c.config.OpenAI.Model, c.logger)
+
+	c.services.DeterministicCheck = service.NewDeterministicCheckService(
+		c.repositories.Item,
+		c.repositories.InvoiceV2,
+		c.repositories.Attachment,
+		c.repositories.Instance,
+		c.config.Storage.CompanyName,
+		c.config.Storage.CompanyTaxID,
+		serviceLogger,
+	)
+
+	c.services.Review = service.NewReviewService(
+		c.repositories.Instance,
+		c.repositories.Item,
+		c.repositories.InvoiceV2,
+		c.repositories.Attachment,
+		c.repositories.Task,
+		c.services.DeterministicCheck,
+		c.aiAuditor,
+		commentGen,
+		taskApprover,
+		c.db,
+		c.config.Lark.ApprovalCode,
+		serviceLogger,
+	)
+
+	c.services.TaskEventHandler = service.NewTaskEventHandler(
+		c.repositories.Instance,
+		c.repositories.Task,
+		c.services.Review,
+		c.config.Lark.AIApproverOpenID,
+		serviceLogger,
+	)
+
 	// Use provider to create workflow engine (also registers event handlers)
 	engine, err := ProvideWorkflowEngine(&WorkflowDeps{
 		Repos:      c.repositories,
 		TxManager:  c.db,
 		Dispatcher: c.dispatcher,
+		Services:   c.services,
 		Logger:     c.logger,
 	})
 	if err != nil {
@@ -470,6 +551,7 @@ func (c *Container) initWorkers() error {
 		LarkBundle:    larkBundle,
 		StorageBundle: storageBundle,
 		AIAuditor:     c.aiAuditor,
+		Dispatcher:    c.dispatcher,
 		WorkerCfg:     &c.config.Worker,
 		Logger:        c.logger,
 	})

@@ -49,6 +49,26 @@ func (m *mockAttachmentRepo) UpdateStatus(ctx context.Context, id int64, status,
 	return nil
 }
 
+func (m *mockAttachmentRepo) GetCompletedUnprocessed(ctx context.Context, limit int) ([]*entity.Attachment, error) {
+	return nil, nil
+}
+
+func (m *mockAttachmentRepo) UpdateItemID(ctx context.Context, attachmentID int64, itemID int64) error {
+	return nil
+}
+
+func (m *mockAttachmentRepo) UpdateFileType(ctx context.Context, attachmentID int64, fileType string) error {
+	return nil
+}
+
+func (m *mockAttachmentRepo) GetByInstanceIDAndStatus(ctx context.Context, instanceID int64, status string) ([]*entity.Attachment, error) {
+	return nil, nil
+}
+
+func (m *mockAttachmentRepo) CountByInstanceIDAndStatuses(ctx context.Context, instanceID int64, statuses []string) (int, error) {
+	return 0, nil
+}
+
 type mockInvoiceRepo struct{}
 
 func (m *mockInvoiceRepo) Create(ctx context.Context, invoice *entity.Invoice) error {

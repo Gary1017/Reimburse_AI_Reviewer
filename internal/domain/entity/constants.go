@@ -4,6 +4,7 @@ package entity
 const (
 	StatusCreated           = "CREATED"
 	StatusPending           = "PENDING"
+	StatusDataReady         = "DATA_READY"
 	StatusAIAuditing        = "AI_AUDITING"
 	StatusAIAudited         = "AI_AUDITED"
 	StatusInReview          = "IN_REVIEW"
