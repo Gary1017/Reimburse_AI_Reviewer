@@ -172,3 +172,9 @@ type NotificationRepository interface {
 type TransactionManager interface {
 	WithTransaction(ctx context.Context, fn func(ctx context.Context) error) error
 }
+
+// OAuthTokenRepository defines operations for OAuth token storage
+type OAuthTokenRepository interface {
+	Upsert(ctx context.Context, token *entity.OAuthToken) error
+	GetByUserID(ctx context.Context, userID string) (*entity.OAuthToken, error)
+}

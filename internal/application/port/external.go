@@ -141,3 +141,47 @@ type CommentGenerationRequest struct {
 type AICommentGenerator interface {
 	GenerateComment(ctx context.Context, req *CommentGenerationRequest) (string, error)
 }
+
+// VoucherData holds data needed to render a voucher
+type VoucherData struct {
+	CompanyName      string
+	ApplicantName    string
+	Department       string
+	ApprovalID       string
+	Items            []*entity.ReimbursementItem
+	Attachments      []*entity.Attachment
+	TotalAmountCents int64
+}
+
+// VoucherRenderResult holds the result of rendering a voucher
+type VoucherRenderResult struct {
+	FilePath string
+	FileName string
+}
+
+// VoucherRenderer renders a voucher from template and data
+type VoucherRenderer interface {
+	Render(ctx context.Context, data *VoucherData, templatePath string, outputPath string) (*VoucherRenderResult, error)
+}
+
+// EmailAttachment represents an email attachment
+type EmailAttachment struct {
+	Filename string
+	Data     []byte
+}
+
+// LarkEmailSender sends email via Lark Mail API
+type LarkEmailSender interface {
+	SendEmail(ctx context.Context, to string, subject string, bodyText string, attachments []EmailAttachment) (messageID string, err error)
+}
+
+// OAuthTokenProvider provides valid user access tokens
+type OAuthTokenProvider interface {
+	GetAccessToken(ctx context.Context, userID string) (string, error)
+	SaveToken(ctx context.Context, userID string, accessToken string, refreshToken string, accessExpiresIn int64, refreshExpiresIn int64) error
+}
+
+// AIErrorDiagnoser diagnoses errors using AI
+type AIErrorDiagnoser interface {
+	DiagnoseError(ctx context.Context, errorDescription string) (string, error)
+}
