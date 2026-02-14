@@ -12,6 +12,7 @@ import (
 	"github.com/garyjia/ai-reimbursement/internal/application/service"
 	"github.com/garyjia/ai-reimbursement/internal/application/workflow"
 	"github.com/garyjia/ai-reimbursement/internal/domain/event"
+	"github.com/garyjia/ai-reimbursement/internal/infrastructure/external/excel"
 	infraLark "github.com/garyjia/ai-reimbursement/internal/infrastructure/external/lark"
 	"github.com/garyjia/ai-reimbursement/internal/infrastructure/external/openai"
 	"github.com/garyjia/ai-reimbursement/internal/infrastructure/persistence/repository"
@@ -202,14 +203,28 @@ func ProvideStorage(cfg *StorageConfig, logger *zap.Logger) (*StorageBundle, err
 	}, nil
 }
 
+// ProvideVoucherRenderer creates the voucher renderer using Excel.
+// Returns port.VoucherRenderer implementation.
+func ProvideVoucherRenderer(logger *zap.Logger) (port.VoucherRenderer, error) {
+	if logger == nil {
+		return nil, fmt.Errorf("logger is required")
+	}
+
+	return excel.NewVoucherRenderer(logger), nil
+}
+
 // ServiceDeps holds dependencies required for creating services.
 type ServiceDeps struct {
-	Repos      *RepositoryBundle
-	TxManager  port.TransactionManager
-	AIAuditor  port.AIAuditor
-	LarkClient port.LarkClient
-	Messenger  port.LarkMessageSender
-	Logger     *zap.Logger
+	Repos          *RepositoryBundle
+	TxManager      port.TransactionManager
+	AIAuditor      port.AIAuditor
+	LarkClient     port.LarkClient
+	Messenger      port.LarkMessageSender
+	VoucherRenderer port.VoucherRenderer
+	FileStorage    port.FileStorage
+	FolderManager  port.FolderManager
+	StorageCfg     *StorageConfig
+	Logger         *zap.Logger
 }
 
 // ProvideServices creates all application services.
@@ -255,6 +270,12 @@ func ProvideServices(deps *ServiceDeps) (*ServiceBundle, error) {
 			deps.Repos.Voucher,
 			deps.Repos.Invoice,
 			deps.TxManager,
+			deps.VoucherRenderer,
+			deps.FileStorage,
+			deps.FolderManager,
+			deps.StorageCfg.TemplatePath,
+			deps.StorageCfg.VoucherOutputDir,
+			deps.StorageCfg.CompanyName,
 			serviceLogger,
 		),
 		Notification: service.NewNotificationService(

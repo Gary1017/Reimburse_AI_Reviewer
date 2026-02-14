@@ -417,14 +417,24 @@ func (c *Container) initStorage() error {
 
 // initServices initializes all application services using providers.
 func (c *Container) initServices() error {
+	// Create VoucherRenderer
+	voucherRenderer, err := ProvideVoucherRenderer(c.logger)
+	if err != nil {
+		return fmt.Errorf("failed to create voucher renderer: %w", err)
+	}
+
 	// Use provider to create services bundle
 	services, err := ProvideServices(&ServiceDeps{
-		Repos:      c.repositories,
-		TxManager:  c.db,
-		AIAuditor:  c.aiAuditor,
-		LarkClient: c.larkAdapter,
-		Messenger:  c.larkMessenger,
-		Logger:     c.logger,
+		Repos:           c.repositories,
+		TxManager:       c.db,
+		AIAuditor:       c.aiAuditor,
+		LarkClient:      c.larkAdapter,
+		Messenger:       c.larkMessenger,
+		VoucherRenderer: voucherRenderer,
+		FileStorage:     c.fileStorage,
+		FolderManager:   c.folderManager,
+		StorageCfg:      &c.config.Storage,
+		Logger:          c.logger,
 	})
 	if err != nil {
 		return err
