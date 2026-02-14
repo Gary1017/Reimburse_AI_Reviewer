@@ -119,6 +119,7 @@ func ProvideRepositories(sqlDB *sql.DB, logger *zap.Logger) (*RepositoryBundle, 
 		InvoiceV2:          repository.NewInvoiceV2Repository(sqlDB, logger),
 		Task:               repository.NewApprovalTaskRepository(sqlDB, logger),
 		ReviewNotification: repository.NewReviewNotificationRepository(sqlDB, logger),
+		OAuthToken:         repository.NewOAuthTokenRepository(sqlDB, logger),
 	}, nil
 }
 
@@ -392,6 +393,37 @@ func ProvideWorkflowEngine(deps *WorkflowDeps) (workflow.WorkflowEngine, error) 
 		})
 		deps.Dispatcher.SubscribeNamed(event.TypeDataReady, "data_ready_review", func(ctx context.Context, evt *event.Event) error {
 			return teh.HandleDataReady(ctx, evt.InstanceID)
+		})
+	}
+
+	// Register voucher generation + email handler
+	if deps.Services != nil && deps.Services.Voucher != nil && deps.Services.Email != nil {
+		voucherSvc := deps.Services.Voucher
+		emailSvc := deps.Services.Email
+		wfLogger := &zapLoggerAdapter{logger: deps.Logger}
+
+		deps.Dispatcher.SubscribeNamed(event.TypeInstanceApproved, "voucher_generator", func(ctx context.Context, evt *event.Event) error {
+			instanceID := evt.InstanceID
+
+			// 1. Generate voucher (renders Excel + copies attachments)
+			result, err := voucherSvc.GenerateVoucher(ctx, instanceID)
+			if err != nil {
+				wfLogger.Error("Voucher generation failed", "instance_id", instanceID, "error", err)
+				return fmt.Errorf("generate voucher: %w", err)
+			}
+
+			// 2. Send email with voucher folder
+			if err := emailSvc.SendVoucherEmail(ctx, instanceID, result.FolderPath); err != nil {
+				// Email failure is logged and admin notified by EmailService
+				// Don't block workflow completion
+				wfLogger.Error("Voucher email failed (admin notified)", "instance_id", instanceID, "error", err)
+			}
+
+			// 3. Emit voucher generated event (triggers VOUCHER_GENERATING -> COMPLETED transition)
+			voucherEvt := event.NewEvent(event.TypeVoucherGenerated, instanceID, "", nil)
+			deps.Dispatcher.Dispatch(ctx, voucherEvt)
+
+			return nil
 		})
 	}
 

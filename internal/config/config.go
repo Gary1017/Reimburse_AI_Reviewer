@@ -40,12 +40,13 @@ type DatabaseConfig struct {
 
 // LarkConfig holds Lark API configuration
 type LarkConfig struct {
-	AppID           string        `mapstructure:"app_id"`
-	AppSecret       string        `mapstructure:"app_secret"`
-	ApprovalCode    string        `mapstructure:"approval_code"`
-	APITimeout      time.Duration `mapstructure:"api_timeout"`
-	AIApproverOpenID string       `mapstructure:"ai_approver_open_id"`  // Open ID of person accountable for AI decisions
-	AIApproverUserID string       `mapstructure:"ai_approver_user_id"` // User ID of person accountable for AI decisions
+	AppID            string        `mapstructure:"app_id"`
+	AppSecret        string        `mapstructure:"app_secret"`
+	ApprovalCode     string        `mapstructure:"approval_code"`
+	APITimeout       time.Duration `mapstructure:"api_timeout"`
+	AIApproverOpenID string        `mapstructure:"ai_approver_open_id"`  // Open ID of person accountable for AI decisions
+	AIApproverUserID string        `mapstructure:"ai_approver_user_id"`  // User ID of person accountable for AI decisions
+	AIApproverEmail  string        `mapstructure:"ai_approver_email"`    // Email address of AI Approver (used as mail sender mailbox)
 }
 
 // OpenAIConfig holds OpenAI API configuration

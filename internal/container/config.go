@@ -66,6 +66,9 @@ type LarkConfig struct {
 
 	// AIApproverUserID is the Lark User ID of the person accountable for AI decisions
 	AIApproverUserID string
+
+	// AIApproverEmail is the Lark email address of the AI Approver (used as mail sender mailbox)
+	AIApproverEmail string
 }
 
 // OpenAIConfig holds OpenAI API settings.
@@ -111,6 +114,9 @@ type StorageConfig struct {
 
 	// CompanyTaxID for vouchers
 	CompanyTaxID string
+
+	// AccountantEmail is the email to send vouchers to
+	AccountantEmail string
 }
 
 // ServerConfig holds HTTP server settings.

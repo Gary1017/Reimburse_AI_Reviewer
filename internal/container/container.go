@@ -38,6 +38,11 @@ type Container struct {
 	larkMessenger  port.LarkMessageSender
 	aiAuditor      port.AIAuditor
 
+	// Infrastructure - OAuth/Email
+	oauthManager   *infraLark.OAuthManager
+	emailSender    port.LarkEmailSender
+	errorDiagnoser port.AIErrorDiagnoser
+
 	// Infrastructure - Storage
 	fileStorage   port.FileStorage
 	folderManager port.FolderManager
@@ -77,6 +82,7 @@ type RepositoryBundle struct {
 	InvoiceV2          port.InvoiceV2Repository
 	Task               port.ApprovalTaskRepository
 	ReviewNotification port.ReviewNotificationRepository
+	OAuthToken         port.OAuthTokenRepository
 }
 
 // ServiceBundle groups all application services.
@@ -86,6 +92,7 @@ type ServiceBundle struct {
 	Audit        service.AuditService
 	Voucher      service.VoucherService
 	Notification service.NotificationService
+	Email        service.EmailService
 
 	// New services for schema refactoring
 	InvoiceList        service.InvoiceListService
@@ -399,6 +406,9 @@ func (c *Container) initExternalClients() error {
 	}
 	c.aiAuditor = auditor
 
+	// Create OAuth manager (needs to be created after repositories are initialized)
+	// We'll create it in initServices instead since it needs the OAuthToken repository
+
 	return nil
 }
 
@@ -417,6 +427,21 @@ func (c *Container) initStorage() error {
 
 // initServices initializes all application services using providers.
 func (c *Container) initServices() error {
+	// Create OAuth manager (needs OAuthToken repository)
+	c.oauthManager = infraLark.NewOAuthManager(c.larkClient.GetClient(), c.repositories.OAuthToken, c.logger)
+
+	// Create email sender
+	c.emailSender = infraLark.NewEmailSender(
+		c.larkClient.GetClient(),
+		c.oauthManager,
+		c.config.Lark.AIApproverUserID,
+		c.config.Lark.AIApproverEmail,
+		c.logger,
+	)
+
+	// Create error diagnoser
+	c.errorDiagnoser = openai.NewErrorDiagnoser(c.config.OpenAI.APIKey, c.config.OpenAI.Model, c.logger)
+
 	// Create VoucherRenderer
 	voucherRenderer, err := ProvideVoucherRenderer(c.logger)
 	if err != nil {
@@ -441,6 +466,20 @@ func (c *Container) initServices() error {
 	}
 
 	c.services = services
+
+	// Create EmailService (needs emailSender, diagnoser which are infra components)
+	serviceLogger := &zapLoggerAdapter{logger: c.logger}
+	c.services.Email = service.NewEmailService(
+		c.emailSender,
+		c.repositories.Voucher,
+		c.repositories.Instance,
+		c.larkMessenger,
+		c.errorDiagnoser,
+		c.config.Storage.AccountantEmail,
+		c.config.Lark.AIApproverOpenID,
+		serviceLogger,
+	)
+
 	return nil
 }
 
@@ -636,6 +675,11 @@ func (c *Container) LarkMessenger() port.LarkMessageSender {
 // AIAuditor returns the AI auditor.
 func (c *Container) AIAuditor() port.AIAuditor {
 	return c.aiAuditor
+}
+
+// OAuthManager returns the OAuth manager.
+func (c *Container) OAuthManager() *infraLark.OAuthManager {
+	return c.oauthManager
 }
 
 // FileStorage returns the file storage.

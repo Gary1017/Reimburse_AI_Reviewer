@@ -25,6 +25,7 @@ func (c *Config) ToContainerConfig() *container.Config {
 			APITimeout:       c.Lark.APITimeout,
 			AIApproverOpenID: c.Lark.AIApproverOpenID,
 			AIApproverUserID: c.Lark.AIApproverUserID,
+			AIApproverEmail:  c.Lark.AIApproverEmail,
 		},
 		OpenAI: container.OpenAIConfig{
 			APIKey:                  c.OpenAI.APIKey,
@@ -42,6 +43,7 @@ func (c *Config) ToContainerConfig() *container.Config {
 			FontPath:         c.Voucher.FontPath,
 			CompanyName:      c.Voucher.CompanyName,
 			CompanyTaxID:     c.Voucher.CompanyTaxID,
+			AccountantEmail:  c.Email.AccountantEmail,
 		},
 		Server: container.ServerConfig{
 			Host:         c.Server.Host,
