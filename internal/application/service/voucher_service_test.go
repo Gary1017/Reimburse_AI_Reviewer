@@ -4,8 +4,37 @@ import (
 	"context"
 	"testing"
 
+	"github.com/garyjia/ai-reimbursement/internal/application/port"
 	"github.com/garyjia/ai-reimbursement/internal/domain/entity"
 )
+
+// Mock implementations for VoucherRenderer, FileStorage, FolderManager
+
+type mockVoucherRenderer struct{}
+
+func (m *mockVoucherRenderer) Render(ctx context.Context, data *port.VoucherData, templatePath string, outputPath string) (*port.VoucherRenderResult, error) {
+	return &port.VoucherRenderResult{FilePath: outputPath, FileName: "reimbursement_form.xlsx"}, nil
+}
+
+type mockFileStorage struct{}
+
+func (m *mockFileStorage) Save(ctx context.Context, path string, content []byte) error { return nil }
+func (m *mockFileStorage) Read(ctx context.Context, path string) ([]byte, error) {
+	return []byte("test"), nil
+}
+func (m *mockFileStorage) Exists(ctx context.Context, path string) bool  { return true }
+func (m *mockFileStorage) Delete(ctx context.Context, path string) error { return nil }
+func (m *mockFileStorage) GetFullPath(relativePath string) string        { return relativePath }
+
+type mockFolderManager struct{}
+
+func (m *mockFolderManager) CreateFolder(ctx context.Context, name string) (string, error) {
+	return name, nil
+}
+func (m *mockFolderManager) GetPath(name string) string             { return name }
+func (m *mockFolderManager) Exists(name string) bool                { return false }
+func (m *mockFolderManager) Delete(ctx context.Context, name string) error { return nil }
+func (m *mockFolderManager) SanitizeName(name string) string        { return name }
 
 type mockVoucherRepo struct {
 	createFunc         func(ctx context.Context, voucher *entity.GeneratedVoucher) error
@@ -129,7 +158,7 @@ func TestVoucherService_IsInstanceReady(t *testing.T) {
 			txManager := &mockTxManager{}
 			logger := &mockLogger{}
 
-			service := NewVoucherService(instanceRepo, itemRepo, attachmentRepo, voucherRepo, invoiceRepo, txManager, logger)
+			service := NewVoucherService(instanceRepo, itemRepo, attachmentRepo, voucherRepo, invoiceRepo, txManager, &mockVoucherRenderer{}, &mockFileStorage{}, &mockFolderManager{}, "/tmp/template.xlsx", "/tmp/vouchers", "TestCo", logger)
 
 			ready, err := service.IsInstanceReady(context.Background(), tt.instanceID)
 
@@ -174,7 +203,7 @@ func TestVoucherService_GenerateVoucher(t *testing.T) {
 	txManager := &mockTxManager{}
 	logger := &mockLogger{}
 
-	service := NewVoucherService(instanceRepo, itemRepo, attachmentRepo, voucherRepo, invoiceRepo, txManager, logger)
+	service := NewVoucherService(instanceRepo, itemRepo, attachmentRepo, voucherRepo, invoiceRepo, txManager, &mockVoucherRenderer{}, &mockFileStorage{}, &mockFolderManager{}, "/tmp/template.xlsx", "/tmp/vouchers", "TestCo", logger)
 
 	result, err := service.GenerateVoucher(context.Background(), 1)
 
