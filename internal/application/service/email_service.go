@@ -25,6 +25,7 @@ type emailServiceImpl struct {
 	diagnoser       port.AIErrorDiagnoser
 	accountantEmail string
 	adminOpenID     string
+	retryInterval   time.Duration
 	logger          Logger
 }
 
@@ -46,6 +47,32 @@ func NewEmailService(
 		diagnoser:       diagnoser,
 		accountantEmail: accountantEmail,
 		adminOpenID:     adminOpenID,
+		retryInterval:   10 * time.Second, // Default 10 seconds
+		logger:          logger,
+	}
+}
+
+// NewEmailServiceWithRetryInterval creates an EmailService with custom retry interval (for testing)
+func NewEmailServiceWithRetryInterval(
+	emailSender port.LarkEmailSender,
+	voucherRepo port.VoucherRepository,
+	instanceRepo port.InstanceRepository,
+	messenger port.LarkMessageSender,
+	diagnoser port.AIErrorDiagnoser,
+	accountantEmail string,
+	adminOpenID string,
+	retryInterval time.Duration,
+	logger Logger,
+) EmailService {
+	return &emailServiceImpl{
+		emailSender:     emailSender,
+		voucherRepo:     voucherRepo,
+		instanceRepo:    instanceRepo,
+		messenger:       messenger,
+		diagnoser:       diagnoser,
+		accountantEmail: accountantEmail,
+		adminOpenID:     adminOpenID,
+		retryInterval:   retryInterval,
 		logger:          logger,
 	}
 }
@@ -91,7 +118,7 @@ func (s *emailServiceImpl) SendVoucherEmail(ctx context.Context, instanceID int6
 			"error", sendErr,
 		)
 		if attempt < 5 {
-			time.Sleep(10 * time.Second)
+			time.Sleep(s.retryInterval)
 		}
 	}
 
