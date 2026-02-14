@@ -171,6 +171,7 @@ func bindEnvVars() {
 	viper.BindEnv("lark.ai_approver_user_id", "AI_APPROVER_USER_ID")
 	viper.BindEnv("openai.api_key", "OPENAI_API_KEY")
 	viper.BindEnv("email.accountant_email", "ACCOUNTANT_EMAIL")
+	viper.BindEnv("lark.ai_approver_email", "AI_APPROVER_EMAIL")
 	viper.BindEnv("voucher.company_name", "COMPANY_NAME")
 	viper.BindEnv("voucher.company_tax_id", "COMPANY_TAX_ID")
 }
