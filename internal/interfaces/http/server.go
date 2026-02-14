@@ -45,6 +45,7 @@ type Server struct {
 	approvalService service.ApprovalService
 	auditService    service.AuditService
 	voucherService  service.VoucherService
+	oauthManager    OAuthCodeExchanger
 	logger          Logger
 }
 
@@ -54,6 +55,7 @@ func NewServer(
 	approvalService service.ApprovalService,
 	auditService service.AuditService,
 	voucherService service.VoucherService,
+	oauthManager OAuthCodeExchanger,
 	logger Logger,
 ) *Server {
 	// Set gin mode based on environment
@@ -67,6 +69,7 @@ func NewServer(
 		approvalService: approvalService,
 		auditService:    auditService,
 		voucherService:  voucherService,
+		oauthManager:    oauthManager,
 		logger:          logger,
 	}
 
@@ -114,10 +117,13 @@ func (s *Server) loggingMiddleware() gin.HandlerFunc {
 
 // setupRoutes configures all HTTP routes
 func (s *Server) setupRoutes() {
-	handlers := NewHandlers(s.approvalService, s.auditService, s.voucherService, s.logger)
+	handlers := NewHandlers(s.approvalService, s.auditService, s.voucherService, s.oauthManager, s.logger)
 
 	// Health check
 	s.router.GET("/health", handlers.HealthCheck)
+
+	// OAuth callback
+	s.router.GET("/oauth/callback", handlers.OAuthCallback)
 
 	// API routes
 	api := s.router.Group("/api")

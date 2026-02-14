@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"time"
@@ -11,11 +12,17 @@ import (
 	"github.com/garyjia/ai-reimbursement/internal/domain/entity"
 )
 
+// OAuthCodeExchanger defines the interface for exchanging OAuth authorization codes
+type OAuthCodeExchanger interface {
+	ExchangeCode(ctx context.Context, code string) (*entity.OAuthToken, error)
+}
+
 // Handlers contains all HTTP request handlers
 type Handlers struct {
 	approvalService service.ApprovalService
 	auditService    service.AuditService
 	voucherService  service.VoucherService
+	oauthManager    OAuthCodeExchanger
 	logger          Logger
 }
 
@@ -24,12 +31,14 @@ func NewHandlers(
 	approvalService service.ApprovalService,
 	auditService service.AuditService,
 	voucherService service.VoucherService,
+	oauthManager OAuthCodeExchanger,
 	logger Logger,
 ) *Handlers {
 	return &Handlers{
 		approvalService: approvalService,
 		auditService:    auditService,
 		voucherService:  voucherService,
+		oauthManager:    oauthManager,
 		logger:          logger,
 	}
 }
@@ -268,6 +277,34 @@ func (h *Handlers) GenerateVoucher(c *gin.Context) {
 	c.JSON(http.StatusOK, Response{
 		Success: true,
 		Data:    response,
+	})
+}
+
+// OAuthCallback handles GET /oauth/callback
+func (h *Handlers) OAuthCallback(c *gin.Context) {
+	code := c.Query("code")
+	if code == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing authorization code"})
+		return
+	}
+
+	// Check if oauth manager is available
+	if h.oauthManager == nil {
+		h.logger.Error("OAuth manager not configured")
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "OAuth service not available"})
+		return
+	}
+
+	token, err := h.oauthManager.ExchangeCode(c.Request.Context(), code)
+	if err != nil {
+		h.logger.Error("OAuth code exchange failed", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to exchange authorization code"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "OAuth authorization successful",
+		"user_id": token.UserID,
 	})
 }
 
