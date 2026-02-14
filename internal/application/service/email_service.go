@@ -118,7 +118,11 @@ func (s *emailServiceImpl) SendVoucherEmail(ctx context.Context, instanceID int6
 			"error", sendErr,
 		)
 		if attempt < 5 {
-			time.Sleep(s.retryInterval)
+			select {
+			case <-time.After(s.retryInterval):
+			case <-ctx.Done():
+				return fmt.Errorf("email send cancelled: %w", ctx.Err())
+			}
 		}
 	}
 

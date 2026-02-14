@@ -12,6 +12,7 @@ import (
 	"github.com/garyjia/ai-reimbursement/internal/application/service"
 	"github.com/garyjia/ai-reimbursement/internal/application/workflow"
 	"github.com/garyjia/ai-reimbursement/internal/domain/event"
+	domainwf "github.com/garyjia/ai-reimbursement/internal/domain/workflow"
 	"github.com/garyjia/ai-reimbursement/internal/infrastructure/external/excel"
 	infraLark "github.com/garyjia/ai-reimbursement/internal/infrastructure/external/lark"
 	"github.com/garyjia/ai-reimbursement/internal/infrastructure/external/openai"
@@ -405,21 +406,27 @@ func ProvideWorkflowEngine(deps *WorkflowDeps) (workflow.WorkflowEngine, error) 
 		deps.Dispatcher.SubscribeNamed(event.TypeInstanceApproved, "voucher_generator", func(ctx context.Context, evt *event.Event) error {
 			instanceID := evt.InstanceID
 
-			// 1. Generate voucher (renders Excel + copies attachments)
+			// 1. Transition to VOUCHER_GENERATING state
+			if err := engine.TransitionState(ctx, instanceID, domainwf.TriggerStartVoucher); err != nil {
+				wfLogger.Error("Failed to transition to VOUCHER_GENERATING", "instance_id", instanceID, "error", err)
+				return fmt.Errorf("start voucher transition: %w", err)
+			}
+
+			// 2. Generate voucher (renders Excel + copies attachments)
 			result, err := voucherSvc.GenerateVoucher(ctx, instanceID)
 			if err != nil {
 				wfLogger.Error("Voucher generation failed", "instance_id", instanceID, "error", err)
 				return fmt.Errorf("generate voucher: %w", err)
 			}
 
-			// 2. Send email with voucher folder
+			// 3. Send email with voucher folder
 			if err := emailSvc.SendVoucherEmail(ctx, instanceID, result.FolderPath); err != nil {
 				// Email failure is logged and admin notified by EmailService
 				// Don't block workflow completion
 				wfLogger.Error("Voucher email failed (admin notified)", "instance_id", instanceID, "error", err)
 			}
 
-			// 3. Emit voucher generated event (triggers VOUCHER_GENERATING -> COMPLETED transition)
+			// 4. Emit voucher generated event (triggers VOUCHER_GENERATING -> COMPLETED transition)
 			voucherEvt := event.NewEvent(event.TypeVoucherGenerated, instanceID, "", nil)
 			deps.Dispatcher.Dispatch(ctx, voucherEvt)
 

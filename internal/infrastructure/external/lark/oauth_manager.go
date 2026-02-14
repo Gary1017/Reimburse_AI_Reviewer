@@ -38,8 +38,12 @@ func NewOAuthManager(client *lark.Client, tokenRepo port.OAuthTokenRepository, l
 
 // ExchangeCode exchanges an authorization code for access and refresh tokens
 func (m *OAuthManager) ExchangeCode(ctx context.Context, code string) (*entity.OAuthToken, error) {
+	codePrefix := code
+	if len(codePrefix) > 10 {
+		codePrefix = codePrefix[:10] + "..."
+	}
 	m.logger.Info("Exchanging authorization code for tokens",
-		zap.String("code_prefix", code[:10]+"..."))
+		zap.String("code_prefix", codePrefix))
 
 	// Build request to exchange code for tokens
 	req := larkauthen.NewCreateAccessTokenReqBuilder().

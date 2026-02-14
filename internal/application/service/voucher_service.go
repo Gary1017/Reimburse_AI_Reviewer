@@ -130,7 +130,7 @@ func (s *voucherServiceImpl) GenerateVoucher(ctx context.Context, instanceID int
 	// Create output folder: {outputDir}/{timestamp}+{lark_instance_id}/
 	timestamp := time.Now().Unix()
 	folderName := s.folderManager.SanitizeName(fmt.Sprintf("%d+%s", timestamp, instance.LarkInstanceID))
-	folderPath, err := s.folderManager.CreateFolder(ctx, folderName)
+	folderPath, err := s.folderManager.CreateFolder(ctx, filepath.Join(s.outputDir, folderName))
 	if err != nil {
 		s.logger.Error("Failed to create output folder", "error", err, "folder_name", folderName)
 		return &VoucherResult{
@@ -274,9 +274,9 @@ func (s *voucherServiceImpl) IsInstanceReady(ctx context.Context, instanceID int
 		return false, fmt.Errorf("get instance: %w", err)
 	}
 
-	// Check status - instance must be approved
-	if instance.Status != "APPROVED" {
-		s.logger.Info("Instance not approved", "instance_id", instanceID, "status", instance.Status)
+	// Check status - instance must be approved or in voucher generating state
+	if instance.Status != "APPROVED" && instance.Status != "VOUCHER_GENERATING" {
+		s.logger.Info("Instance not in valid state for voucher generation", "instance_id", instanceID, "status", instance.Status)
 		return false, nil
 	}
 
