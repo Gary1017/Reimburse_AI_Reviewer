@@ -30,7 +30,6 @@ type voucherServiceImpl struct {
 	itemRepo       port.ItemRepository
 	attachmentRepo port.AttachmentRepository
 	voucherRepo    port.VoucherRepository
-	invoiceRepo    port.InvoiceRepository
 	txManager      port.TransactionManager
 	renderer       port.VoucherRenderer
 	fileStorage    port.FileStorage
@@ -47,7 +46,6 @@ func NewVoucherService(
 	itemRepo port.ItemRepository,
 	attachmentRepo port.AttachmentRepository,
 	voucherRepo port.VoucherRepository,
-	invoiceRepo port.InvoiceRepository,
 	txManager port.TransactionManager,
 	renderer port.VoucherRenderer,
 	fileStorage port.FileStorage,
@@ -62,7 +60,6 @@ func NewVoucherService(
 		itemRepo:       itemRepo,
 		attachmentRepo: attachmentRepo,
 		voucherRepo:    voucherRepo,
-		invoiceRepo:    invoiceRepo,
 		txManager:      txManager,
 		renderer:       renderer,
 		fileStorage:    fileStorage,
@@ -141,20 +138,20 @@ func (s *voucherServiceImpl) GenerateVoucher(ctx context.Context, instanceID int
 	s.logger.Info("Created output folder", "folder_path", folderPath)
 
 	// Calculate total amount from items
-	var totalAmountCents int64
+	var totalAmount float64
 	for _, item := range items {
-		totalAmountCents += item.AmountCents
+		totalAmount += item.Amount
 	}
 
 	// Build VoucherData from instance/items/attachments
 	voucherData := &port.VoucherData{
-		CompanyName:      s.companyName,
-		ApplicantName:    instance.ApplicantUserID, // Use UserID as placeholder; in production, fetch name from Lark
-		Department:       instance.Department,
-		ApprovalID:       instance.LarkInstanceID,
-		Items:            items,
-		Attachments:      attachments,
-		TotalAmountCents: totalAmountCents,
+		CompanyName:   s.companyName,
+		ApplicantName: instance.ApplicantUserID, // Use UserID as placeholder; in production, fetch name from Lark
+		Department:    instance.Department,
+		ApprovalID:    instance.LarkInstanceID,
+		Items:         items,
+		Attachments:   attachments,
+		TotalAmount:   totalAmount,
 	}
 
 	// Render voucher Excel file
@@ -189,18 +186,17 @@ func (s *voucherServiceImpl) GenerateVoucher(ctx context.Context, instanceID int
 		}
 
 		// Find matching item to get amount
-		var itemAmount int64
+		var itemAmount float64
 		for _, item := range items {
 			if item.ID == att.ItemID {
-				itemAmount = item.AmountCents
+				itemAmount = item.Amount
 				break
 			}
 		}
 
 		// Generate new filename: {attachment_id}_{amount}.ext
 		ext := filepath.Ext(att.FileName)
-		amountYuan := float64(itemAmount) / 100.0
-		newFileName := fmt.Sprintf("%d_%.2f%s", att.ID, amountYuan, ext)
+		newFileName := fmt.Sprintf("%d_%.2f%s", att.ID, itemAmount, ext)
 		newFilePath := filepath.Join(folderPath, newFileName)
 
 		// Save attachment to folder

@@ -29,7 +29,7 @@ type auditServiceImpl struct {
 	instanceRepo    port.InstanceRepository
 	itemRepo        port.ItemRepository
 	attachmentRepo  port.AttachmentRepository
-	invoiceRepo     port.InvoiceRepository
+	invoiceV2Repo   port.InvoiceV2Repository
 	aiAuditor       port.AIAuditor
 	logger          Logger
 }
@@ -39,7 +39,7 @@ func NewAuditService(
 	instanceRepo port.InstanceRepository,
 	itemRepo port.ItemRepository,
 	attachmentRepo port.AttachmentRepository,
-	invoiceRepo port.InvoiceRepository,
+	invoiceV2Repo port.InvoiceV2Repository,
 	aiAuditor port.AIAuditor,
 	logger Logger,
 ) AuditService {
@@ -47,7 +47,7 @@ func NewAuditService(
 		instanceRepo:   instanceRepo,
 		itemRepo:       itemRepo,
 		attachmentRepo: attachmentRepo,
-		invoiceRepo:    invoiceRepo,
+		invoiceV2Repo:  invoiceV2Repo,
 		aiAuditor:      aiAuditor,
 		logger:         logger,
 	}
@@ -145,7 +145,7 @@ func (s *auditServiceImpl) AuditItem(ctx context.Context, item *entity.Reimburse
 	s.logger.Info("Auditing item", "item_id", item.ID, "type", item.ItemType)
 
 	// Get associated invoices
-	invoices, err := s.invoiceRepo.GetByInstanceID(ctx, item.InstanceID)
+	invoices, err := s.invoiceV2Repo.GetByInstanceID(ctx, item.InstanceID)
 	if err != nil {
 		s.logger.Error("Failed to get invoices", "error", err, "instance_id", item.InstanceID)
 		return nil, fmt.Errorf("get invoices: %w", err)

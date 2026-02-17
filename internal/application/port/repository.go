@@ -51,21 +51,10 @@ type HistoryRepository interface {
 // NEW INTERFACES FOR SCHEMA REFACTORING
 // =============================================================================
 
-// InvoiceListRepository defines persistence operations for InvoiceList
-// Deprecated: invoice_lists table removed in migration 019. Use InvoiceV2Repository.GetTotalsByInstanceID instead.
-type InvoiceListRepository interface {
-	Create(ctx context.Context, list *entity.InvoiceList) error
-	GetByID(ctx context.Context, id int64) (*entity.InvoiceList, error)
-	GetByInstanceID(ctx context.Context, instanceID int64) (*entity.InvoiceList, error)
-	Update(ctx context.Context, list *entity.InvoiceList) error
-	UpdateStatus(ctx context.Context, id int64, status string) error
-	UpdateTotals(ctx context.Context, id int64, count int, amountCents int64) error
-}
-
 // InvoiceTotals represents aggregated invoice data for an instance
 type InvoiceTotals struct {
-	Count       int   `json:"count"`
-	AmountCents int64 `json:"amount_cents"`
+	Count       int     `json:"count"`
+	TotalAmount float64 `json:"total_amount"`
 }
 
 // InvoiceV2Repository defines persistence operations for InvoiceV2
@@ -133,39 +122,11 @@ type ApprovalTaskRepository interface {
 	MarkNotificationSent(ctx context.Context, id int64) error
 }
 
-// ReviewNotificationRepository defines persistence operations for ReviewNotification
-// Deprecated: review_notifications table removed in migration 019. Use ApprovalTaskRepository.MarkNotificationSent instead.
-type ReviewNotificationRepository interface {
-	Create(ctx context.Context, notification *entity.ReviewNotification) error
-	GetByID(ctx context.Context, id int64) (*entity.ReviewNotification, error)
-	GetByTaskID(ctx context.Context, taskID int64) (*entity.ReviewNotification, error)
-	UpdateStatus(ctx context.Context, id int64, status string, errorMsg string) error
-	MarkSent(ctx context.Context, id int64) error
-}
-
-// InvoiceRepository defines persistence operations for Invoice
-type InvoiceRepository interface {
-	Create(ctx context.Context, invoice *entity.Invoice) error
-	GetByID(ctx context.Context, id int64) (*entity.Invoice, error)
-	GetByAttachmentID(ctx context.Context, attachmentID int64) (*entity.Invoice, error)
-	GetByInstanceID(ctx context.Context, instanceID int64) ([]*entity.Invoice, error)
-	Update(ctx context.Context, invoice *entity.Invoice) error
-	GetByUniqueID(ctx context.Context, uniqueID string) (*entity.Invoice, error)
-}
-
 // VoucherRepository defines persistence operations for GeneratedVoucher
 type VoucherRepository interface {
 	Create(ctx context.Context, voucher *entity.GeneratedVoucher) error
 	GetByInstanceID(ctx context.Context, instanceID int64) (*entity.GeneratedVoucher, error)
 	Update(ctx context.Context, voucher *entity.GeneratedVoucher) error
-}
-
-// NotificationRepository defines persistence operations for AuditNotification
-type NotificationRepository interface {
-	Create(ctx context.Context, notification *entity.AuditNotification) error
-	GetByInstanceID(ctx context.Context, instanceID int64) (*entity.AuditNotification, error)
-	UpdateStatus(ctx context.Context, id int64, status string, errorMsg string) error
-	MarkSent(ctx context.Context, id int64) error
 }
 
 // TransactionManager handles database transactions

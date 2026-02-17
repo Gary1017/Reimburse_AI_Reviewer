@@ -60,24 +60,21 @@ type TaskService interface {
 }
 
 type taskServiceImpl struct {
-	taskRepo                   port.ApprovalTaskRepository
-	reviewNotificationRepo     port.ReviewNotificationRepository
-	txManager                  port.TransactionManager
-	logger                     Logger
+	taskRepo  port.ApprovalTaskRepository
+	txManager port.TransactionManager
+	logger    Logger
 }
 
 // NewTaskService creates a new TaskService
 func NewTaskService(
 	taskRepo port.ApprovalTaskRepository,
-	reviewNotificationRepo port.ReviewNotificationRepository,
 	txManager port.TransactionManager,
 	logger Logger,
 ) TaskService {
 	return &taskServiceImpl{
-		taskRepo:               taskRepo,
-		reviewNotificationRepo: reviewNotificationRepo,
-		txManager:              txManager,
-		logger:                 logger,
+		taskRepo:  taskRepo,
+		txManager: txManager,
+		logger:    logger,
 	}
 }
 

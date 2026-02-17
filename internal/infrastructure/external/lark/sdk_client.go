@@ -1,6 +1,8 @@
 package lark
 
 import (
+	"net/http"
+
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 	"go.uber.org/zap"
@@ -22,12 +24,19 @@ type Config struct {
 	ApprovalCode string // Unique approval definition code
 }
 
-// NewSDKClient creates a new Lark SDK client
-func NewSDKClient(cfg Config, logger *zap.Logger) *SDKClient {
-	client := lark.NewClient(cfg.AppID, cfg.AppSecret,
+// NewSDKClient creates a new Lark SDK client.
+// An optional httpClient can be provided (e.g. go-vcr recorder) to override
+// the default HTTP transport used by the Lark SDK.
+func NewSDKClient(cfg Config, logger *zap.Logger, httpClient ...*http.Client) *SDKClient {
+	opts := []lark.ClientOptionFunc{
 		lark.WithLogLevel(larkcore.LogLevelInfo),
 		lark.WithEnableTokenCache(true),
-	)
+	}
+	if len(httpClient) > 0 && httpClient[0] != nil {
+		opts = append(opts, lark.WithHttpClient(httpClient[0]))
+	}
+
+	client := lark.NewClient(cfg.AppID, cfg.AppSecret, opts...)
 
 	return &SDKClient{
 		client:       client,

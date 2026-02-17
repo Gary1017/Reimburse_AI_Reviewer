@@ -1,0 +1,38 @@
+{
+  "approval_name": "费用报销 - 副本",
+  "start_time": "1771320015198",
+  "end_time": "0",
+  "user_id": "bj1",
+  "open_id": "ou_a0fe06a0f9f90656f92c83d998c394f1",
+  "serial_number": "202602170004",
+  "department_id": "03",
+  "status": "PENDING",
+  "uuid": "9f6d79cd",
+  "form": "[{\"id\":\"widget16510509268920001\",\"name\":\"报销类型\",\"type\":\"radioV2\",\"ext\":null,\"value\":\"住宿费\",\"option\":{\"key\":\"l2hd3cj7-1oyfvnuc74-1\",\"text\":\"住宿费\"}},{\"id\":\"widget16510509704570001\",\"name\":\"报销事由\",\"type\":\"textarea\",\"ext\":null,\"value\":\"参加项目\"},{\"id\":\"widget16510509818090001\",\"name\":\"费用汇总\",\"type\":\"formula\",\"ext\":{\"capitalValue\":\"玖佰元整\"},\"value\":900},{\"id\":\"widget17169461523150001\",\"name\":\"发票抬头\",\"type\":\"radioV2\",\"ext\":null,\"value\":\"云翰虹章\",\"option\":{\"key\":\"lwr5epvg-acsblfd6ox4-0\",\"text\":\"云翰虹章\"}},{\"id\":\"widget16510509950440001\",\"name\":\"费用明细\",\"type\":\"fieldList\",\"ext\":[{\"capitalValue\":\"\",\"id\":\"widget16510510254730001\",\"sumItems\":\"[{\\\"currency\\\":\\\"CNY\\\",\\\"value\\\":\\\"900\\\"}]\",\"type\":\"amount\",\"value\":\"900.00\"}],\"value\":[[{\"id\":\"widget16510510048490001\",\"name\":\"内容\",\"type\":\"input\",\"ext\":null,\"value\":\"酒店\"},{\"id\":\"widget16510510138590001\",\"name\":\"日期（年-月-日）\",\"type\":\"date\",\"ext\":null,\"value\":\"2026-01-20T00:00:00+08:00\",\"timezoneOffset\":-480},{\"id\":\"widget16510510254730001\",\"name\":\"金额\",\"type\":\"amount\",\"ext\":{\"capitalValue\":\"玖佰元整\",\"currency\":\"CNY\",\"currencyRange\":[\"CNY\"],\"maxValue\":\"\",\"minValue\":\"\"},\"value\":900}]],\"option\":{\"input_type\":\"LIST\",\"mobile_detail_type\":\"CARD\",\"print_type\":\"LIST\"}},{\"id\":\"widget17189501748910001\",\"name\":\"收款账户\",\"type\":\"account\",\"ext\":null,\"value\":{\"widgetAccountBankArea\":{\"value\":\"1784764,1799397\",\"text\":\"[{\\\"code\\\":\\\"33\\\",\\\"name\\\":\\\"浙江省\\\",\\\"pinyin\\\":\\\"zhe jiang sheng\\\",\\\"geoname_id\\\":1784764,\\\"asci_name\\\":\\\"Zhejiang Sheng\\\",\\\"level\\\":\\\"Province\\\"},{\\\"code\\\":\\\"330200\\\",\\\"name\\\":\\\"宁波市\\\",\\\"pinyin\\\":\\\"ning bo shi\\\",\\\"geoname_id\\\":1799397,\\\"asci_name\\\":\\\"Ningbo\\\",\\\"level\\\":\\\"City\\\"}]\"},\"widgetAccountBankBranch\":{\"value\":\"91996\",\"text\":\"{\\\"bankBranchCode\\\":\\\"\\\",\\\"bankBranchNameEn\\\":\\\"Ningboshi Branch\\\",\\\"bankBranchNameFr\\\":\\\"\\\",\\\"bankBranchNameJp\\\":\\\"\\\",\\\"bankBranchNameZh\\\":\\\"宁波市分行\\\",\\\"bankCode\\\":\\\"BOC\\\",\\\"bankNameEn\\\":\\\"Bank of China\\\",\\\"bankNameFr\\\":\\\"\\\",\\\"bankNameJp\\\":\\\"\\\",\\\"bankNameZh\\\":\\\"中国银行\\\",\\\"bkId\\\":91996,\\\"city\\\":\\\"宁波\\\",\\\"code\\\":\\\"104332051437\\\",\\\"countryCode\\\":\\\"CN\\\",\\\"language\\\":\\\"zh\\\",\\\"level\\\":2,\\\"name\\\":\\\"中国银行宁波市分行\\\",\\\"province\\\":\\\"浙江\\\"}\"},\"widgetAccountBankName\":{\"value\":\"BOC\",\"text\":\"{\\\"bankCode\\\":\\\"BOC\\\",\\\"bankNameEn\\\":\\\"Bank of China\\\",\\\"bankNameZh\\\":\\\"中国银行\\\",\\\"iconURL\\\":\\\"https://sf16-scmcdn-va.ibytedtos.com/obj/static-us/ea/approval-static/bank-icon/36185557c0282f6e84ff43193e00a191.png\\\"}\"},\"widgetAccountName\":\"贾斌\",\"widgetAccountNumber\":\"6216691400000520363\",\"widgetAccountType\":{\"value\":\"1\",\"text\":\"1\"}}},{\"id\":\"widget16510510447300001\",\"name\":\"附件\",\"type\":\"attachmentV2\",\"ext\":\"浙江通行费电子发票1.pdf\",\"value\":[\"https://internal-api-drive-stream.feishu.cn/space/api/box/stream/download/authcode/?code=ZDIyNTAzYjdlY2IwOWE1YzhkMzNjZjY3YmY1ODVmNDdfMTdkNjMyYTJiODMxNTg4MjFiNDBmNzE0Y2Q5NmYzMmZfSUQ6NzU5Nzc1NDIzMDQ4OTA1ODUyM18xNzcxMzIwMDE3OjE3NzE0MDY0MTdfVjM\"]}]",
+  "task_list": [
+    {
+      "id": "7607761536752307417",
+      "user_id": "bj1",
+      "open_id": "ou_a0fe06a0f9f90656f92c83d998c394f1",
+      "status": "PENDING",
+      "node_id": "6470418374602209571118cbee5bc040",
+      "node_name": "AI审阅审批内容",
+      "type": "AND",
+      "start_time": "1771320015289",
+      "end_time": "0"
+    }
+  ],
+  "timeline": [
+    {
+      "type": "START",
+      "create_time": "1771320015198",
+      "user_id": "bj1",
+      "open_id": "ou_a0fe06a0f9f90656f92c83d998c394f1",
+      "ext": "{}",
+      "node_key": ""
+    }
+  ],
+  "approval_code": "7B927381-2D23-420B-9EFA-CA6C5534BC73",
+  "reverted": false,
+  "instance_code": "BBD14B93-13A7-4ECE-8F78-901C9E94C820"
+}

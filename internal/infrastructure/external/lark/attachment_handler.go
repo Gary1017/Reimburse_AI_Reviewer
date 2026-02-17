@@ -44,29 +44,46 @@ func (h *AttachmentHandler) ExtractAttachmentURLs(formData string) ([]*entity.At
 		return nil, fmt.Errorf("empty form data provided")
 	}
 
-	var data map[string]interface{}
-	if err := json.Unmarshal([]byte(formData), &data); err != nil {
-		h.logger.Error("Failed to parse form data for attachment extraction", zap.Error(err))
-		return nil, fmt.Errorf("failed to parse form data: %w", err)
-	}
-
 	references := make([]*entity.AttachmentReference, 0)
 
-	// Handle form field with JSON string containing widgets
-	if formStr, ok := data["form"].(string); ok {
+	// Lark form data may be double-encoded: a JSON string containing a JSON array.
+	unwrapped := formData
+	if len(formData) >= 2 && formData[0] == '"' {
+		var unquoted string
+		if err := json.Unmarshal([]byte(formData), &unquoted); err == nil {
+			unwrapped = unquoted
+		}
+	}
+
+	// Lark form data can be either a JSON object or a JSON array of widgets
+	var data map[string]interface{}
+	if err := json.Unmarshal([]byte(unwrapped), &data); err != nil {
+		// Try as JSON array (Lark widgets format directly)
 		var widgets []interface{}
-		if err := json.Unmarshal([]byte(formStr), &widgets); err != nil {
-			h.logger.Error("Failed to unmarshal form widgets array", zap.Error(err))
-			return nil, fmt.Errorf("failed to unmarshal widgets from form field: %w", err)
+		if arrErr := json.Unmarshal([]byte(unwrapped), &widgets); arrErr != nil {
+			h.logger.Error("Failed to parse form data for attachment extraction",
+				zap.Error(err), zap.NamedError("array_error", arrErr))
+			return nil, fmt.Errorf("failed to parse form data: %w", err)
 		}
 		refs := h.extractFromWidgets(widgets)
 		references = append(references, refs...)
-	}
+	} else {
+		// Handle form field with JSON string containing widgets
+		if formStr, ok := data["form"].(string); ok {
+			var widgets []interface{}
+			if err := json.Unmarshal([]byte(formStr), &widgets); err != nil {
+				h.logger.Error("Failed to unmarshal form widgets array", zap.Error(err))
+				return nil, fmt.Errorf("failed to unmarshal widgets from form field: %w", err)
+			}
+			refs := h.extractFromWidgets(widgets)
+			references = append(references, refs...)
+		}
 
-	// Handle direct widgets array
-	if widgets, ok := data["widgets"].([]interface{}); ok {
-		refs := h.extractFromWidgets(widgets)
-		references = append(references, refs...)
+		// Handle direct widgets array
+		if widgets, ok := data["widgets"].([]interface{}); ok {
+			refs := h.extractFromWidgets(widgets)
+			references = append(references, refs...)
+		}
 	}
 
 	h.logger.Debug("Extracted attachment references",

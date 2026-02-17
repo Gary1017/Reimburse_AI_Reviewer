@@ -144,13 +144,13 @@ type AICommentGenerator interface {
 
 // VoucherData holds data needed to render a voucher
 type VoucherData struct {
-	CompanyName      string
-	ApplicantName    string
-	Department       string
-	ApprovalID       string
-	Items            []*entity.ReimbursementItem
-	Attachments      []*entity.Attachment
-	TotalAmountCents int64
+	CompanyName   string
+	ApplicantName string
+	Department    string
+	ApprovalID    string
+	Items         []*entity.ReimbursementItem
+	Attachments   []*entity.Attachment
+	TotalAmount   float64
 }
 
 // VoucherRenderResult holds the result of rendering a voucher

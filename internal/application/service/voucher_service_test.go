@@ -154,11 +154,10 @@ func TestVoucherService_IsInstanceReady(t *testing.T) {
 				},
 			}
 			voucherRepo := &mockVoucherRepo{}
-			invoiceRepo := &mockInvoiceRepo{}
 			txManager := &mockTxManager{}
 			logger := &mockLogger{}
 
-			service := NewVoucherService(instanceRepo, itemRepo, attachmentRepo, voucherRepo, invoiceRepo, txManager, &mockVoucherRenderer{}, &mockFileStorage{}, &mockFolderManager{}, "/tmp/template.xlsx", "/tmp/vouchers", "TestCo", logger)
+			service := NewVoucherService(instanceRepo, itemRepo, attachmentRepo, voucherRepo, txManager, &mockVoucherRenderer{}, &mockFileStorage{}, &mockFolderManager{}, "/tmp/template.xlsx", "/tmp/vouchers", "TestCo", logger)
 
 			ready, err := service.IsInstanceReady(context.Background(), tt.instanceID)
 
@@ -199,11 +198,10 @@ func TestVoucherService_GenerateVoucher(t *testing.T) {
 		},
 	}
 	voucherRepo := &mockVoucherRepo{}
-	invoiceRepo := &mockInvoiceRepo{}
 	txManager := &mockTxManager{}
 	logger := &mockLogger{}
 
-	service := NewVoucherService(instanceRepo, itemRepo, attachmentRepo, voucherRepo, invoiceRepo, txManager, &mockVoucherRenderer{}, &mockFileStorage{}, &mockFolderManager{}, "/tmp/template.xlsx", "/tmp/vouchers", "TestCo", logger)
+	service := NewVoucherService(instanceRepo, itemRepo, attachmentRepo, voucherRepo, txManager, &mockVoucherRenderer{}, &mockFileStorage{}, &mockFolderManager{}, "/tmp/template.xlsx", "/tmp/vouchers", "TestCo", logger)
 
 	result, err := service.GenerateVoucher(context.Background(), 1)
 

@@ -28,26 +28,20 @@ func NewItemRepository(db *sql.DB, logger *zap.Logger) port.ItemRepository {
 func (r *ItemRepository) Create(ctx context.Context, item *entity.ReimbursementItem) error {
 	query := `
 		INSERT INTO reimbursement_items (
-			instance_id, item_type, description, amount, amount_cents, currency,
-			receipt_attachment, ai_price_check, ai_policy_check,
-			expense_date, vendor, business_purpose
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			instance_id, item_type, description, amount, currency,
+			receipt_attachment, ai_price_check, ai_policy_check
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
-	// Write to both amount (deprecated) and amount_cents for backwards compatibility
 	result, err := r.getExecutor(ctx).ExecContext(ctx, query,
 		item.InstanceID,
 		item.ItemType,
 		item.Description,
-		float64(item.AmountCents)/100.0, // Deprecated: amount in yuan
-		item.AmountCents,                 // Primary: amount in cents
+		item.Amount,
 		item.Currency,
 		item.ReceiptAttachment,
 		item.AIPriceCheck,
 		item.AIPolicyCheck,
-		item.ExpenseDate,
-		item.Vendor,
-		item.BusinessPurpose,
 	)
 	if err != nil {
 		r.logger.Error("Failed to create reimbursement item", zap.Error(err))
@@ -66,32 +60,24 @@ func (r *ItemRepository) Create(ctx context.Context, item *entity.ReimbursementI
 // GetByID retrieves a reimbursement item by ID
 func (r *ItemRepository) GetByID(ctx context.Context, id int64) (*entity.ReimbursementItem, error) {
 	query := `
-		SELECT id, instance_id, item_type, description,
-			COALESCE(amount_cents, CAST(amount * 100 AS INTEGER)) as amount_cents,
-			amount, currency,
-			receipt_attachment, ai_price_check, ai_policy_check,
-			expense_date, vendor, business_purpose, created_at
+		SELECT id, instance_id, item_type, description, amount, currency,
+			receipt_attachment, ai_price_check, ai_policy_check, created_at
 		FROM reimbursement_items
 		WHERE id = ?
 	`
 
 	var item entity.ReimbursementItem
-	var expenseDate sql.NullTime
 
 	err := r.getExecutor(ctx).QueryRowContext(ctx, query, id).Scan(
 		&item.ID,
 		&item.InstanceID,
 		&item.ItemType,
 		&item.Description,
-		&item.AmountCents,
-		&item.Amount, // Deprecated, kept for backwards compatibility
+		&item.Amount,
 		&item.Currency,
 		&item.ReceiptAttachment,
 		&item.AIPriceCheck,
 		&item.AIPolicyCheck,
-		&expenseDate,
-		&item.Vendor,
-		&item.BusinessPurpose,
 		&item.CreatedAt,
 	)
 
@@ -103,21 +89,14 @@ func (r *ItemRepository) GetByID(ctx context.Context, id int64) (*entity.Reimbur
 		return nil, fmt.Errorf("failed to get item: %w", err)
 	}
 
-	if expenseDate.Valid {
-		item.ExpenseDate = &expenseDate.Time
-	}
-
 	return &item, nil
 }
 
 // GetByInstanceID retrieves all reimbursement items for an instance
 func (r *ItemRepository) GetByInstanceID(ctx context.Context, instanceID int64) ([]*entity.ReimbursementItem, error) {
 	query := `
-		SELECT id, instance_id, item_type, description,
-			COALESCE(amount_cents, CAST(amount * 100 AS INTEGER)) as amount_cents,
-			amount, currency,
-			receipt_attachment, ai_price_check, ai_policy_check,
-			expense_date, vendor, business_purpose, created_at
+		SELECT id, instance_id, item_type, description, amount, currency,
+			receipt_attachment, ai_price_check, ai_policy_check, created_at
 		FROM reimbursement_items
 		WHERE instance_id = ?
 		ORDER BY created_at ASC
@@ -133,30 +112,21 @@ func (r *ItemRepository) GetByInstanceID(ctx context.Context, instanceID int64) 
 	var items []*entity.ReimbursementItem
 	for rows.Next() {
 		var item entity.ReimbursementItem
-		var expenseDate sql.NullTime
 
 		err := rows.Scan(
 			&item.ID,
 			&item.InstanceID,
 			&item.ItemType,
 			&item.Description,
-			&item.AmountCents,
-			&item.Amount, // Deprecated, kept for backwards compatibility
+			&item.Amount,
 			&item.Currency,
 			&item.ReceiptAttachment,
 			&item.AIPriceCheck,
 			&item.AIPolicyCheck,
-			&expenseDate,
-			&item.Vendor,
-			&item.BusinessPurpose,
 			&item.CreatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan item: %w", err)
-		}
-
-		if expenseDate.Valid {
-			item.ExpenseDate = &expenseDate.Time
 		}
 
 		items = append(items, &item)
@@ -169,25 +139,19 @@ func (r *ItemRepository) GetByInstanceID(ctx context.Context, instanceID int64) 
 func (r *ItemRepository) Update(ctx context.Context, item *entity.ReimbursementItem) error {
 	query := `
 		UPDATE reimbursement_items
-		SET item_type = ?, description = ?, amount = ?, amount_cents = ?, currency = ?,
-			receipt_attachment = ?, ai_price_check = ?, ai_policy_check = ?,
-			expense_date = ?, vendor = ?, business_purpose = ?
+		SET item_type = ?, description = ?, amount = ?, currency = ?,
+			receipt_attachment = ?, ai_price_check = ?, ai_policy_check = ?
 		WHERE id = ?
 	`
 
-	// Write to both amount (deprecated) and amount_cents for backwards compatibility
 	_, err := r.getExecutor(ctx).ExecContext(ctx, query,
 		item.ItemType,
 		item.Description,
-		float64(item.AmountCents)/100.0, // Deprecated: amount in yuan
-		item.AmountCents,                 // Primary: amount in cents
+		item.Amount,
 		item.Currency,
 		item.ReceiptAttachment,
 		item.AIPriceCheck,
 		item.AIPolicyCheck,
-		item.ExpenseDate,
-		item.Vendor,
-		item.BusinessPurpose,
 		item.ID,
 	)
 	if err != nil {

@@ -1,0 +1,17 @@
+{
+  "event": {
+    "app_id": "cli_a7237d0ba1f0d01c",
+    "approval_code": "7B927381-2D23-420B-9EFA-CA6C5534BC73",
+    "instance_code": "BBD14B93-13A7-4ECE-8F78-901C9E94C820",
+    "instance_operate_time": "1771320015198",
+    "operate_time": "1771320015198",
+    "status": "PENDING",
+    "tenant_key": "10500c2e479e575d",
+    "type": "approval_instance",
+    "uuid": "9f6d79cd"
+  },
+  "token": "",
+  "ts": "1771320016.857490",
+  "type": "event_callback",
+  "uuid": "ad5af2c964c9af0078821d8d6733f9c1"
+}

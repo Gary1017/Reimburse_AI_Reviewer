@@ -23,19 +23,19 @@ type ReimbursementItem struct {
 	InstanceID        int64      `json:"instance_id"`
 	ItemType          string     `json:"item_type"`
 	Description       string     `json:"description"`
-	AmountCents       int64      `json:"amount_cents"`        // Amount in cents (分) to avoid float precision issues
-	Amount            float64    `json:"amount"`              // Deprecated: use AmountCents instead
+	Amount            float64    `json:"amount"`    // Amount in yuan (元), persisted to DB
+	AmountCents       int64      `json:"amount_cents"` // Convenience: Amount * 100, computed at runtime
 	Currency          string     `json:"currency"`
 	ReceiptAttachment string     `json:"receipt_attachment"`
 	AIPriceCheck      string     `json:"ai_price_check"`
 	AIPolicyCheck     string     `json:"ai_policy_check"`
-	ExpenseDate       *time.Time `json:"expense_date,omitempty"`
-	Vendor            string     `json:"vendor,omitempty"`
-	BusinessPurpose   string     `json:"business_purpose,omitempty"`
+	ExpenseDate       *time.Time `json:"expense_date,omitempty"`   // Parsed from form, not persisted
+	Vendor            string     `json:"vendor,omitempty"`         // Parsed from form, not persisted
+	BusinessPurpose   string     `json:"business_purpose,omitempty"` // Parsed from form, not persisted
 	CreatedAt         time.Time  `json:"created_at"`
 }
 
 // AmountYuan returns the amount in yuan (元) for display purposes.
 func (i *ReimbursementItem) AmountYuan() float64 {
-	return float64(i.AmountCents) / 100.0
+	return i.Amount
 }

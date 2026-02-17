@@ -48,7 +48,6 @@ type invoiceListServiceImpl struct {
 // NewInvoiceListService creates a new InvoiceListService
 // Deprecated: This service is deprecated. Use InvoiceV2Repository directly.
 func NewInvoiceListService(
-	invoiceListRepo port.InvoiceListRepository, // Deprecated: ignored
 	invoiceV2Repo port.InvoiceV2Repository,
 	txManager port.TransactionManager,
 	logger Logger,
@@ -106,12 +105,11 @@ func (s *invoiceListServiceImpl) GetByInstanceID(ctx context.Context, instanceID
 
 	// Return a synthetic InvoiceList for backwards compatibility
 	return &entity.InvoiceList{
-		ID:                      0, // No real ID - computed dynamically
-		InstanceID:              instanceID,
-		TotalInvoiceCount:       totals.Count,
-		TotalInvoiceAmountCents: totals.AmountCents,
-		TotalInvoiceAmount:      float64(totals.AmountCents) / 100.0, // Deprecated field
-		Status:                  entity.InvoiceListStatusCompleted,   // Always "completed"
+		ID:                 0, // No real ID - computed dynamically
+		InstanceID:         instanceID,
+		TotalInvoiceCount:  totals.Count,
+		TotalInvoiceAmount: totals.TotalAmount,
+		Status:             entity.InvoiceListStatusCompleted, // Always "completed"
 	}, nil
 }
 

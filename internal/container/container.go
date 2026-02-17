@@ -68,21 +68,17 @@ type Container struct {
 
 // RepositoryBundle groups all repositories for convenient access.
 type RepositoryBundle struct {
-	// Existing repositories
-	Instance     port.InstanceRepository
-	Item         port.ItemRepository
-	Attachment   port.AttachmentRepository
-	History      port.HistoryRepository
-	Invoice      port.InvoiceRepository
-	Voucher      port.VoucherRepository
-	Notification port.NotificationRepository
+	// Core repositories
+	Instance   port.InstanceRepository
+	Item       port.ItemRepository
+	Attachment port.AttachmentRepository
+	History    port.HistoryRepository
+	Voucher    port.VoucherRepository
 
 	// New repositories for schema refactoring
-	InvoiceList        port.InvoiceListRepository
-	InvoiceV2          port.InvoiceV2Repository
-	Task               port.ApprovalTaskRepository
-	ReviewNotification port.ReviewNotificationRepository
-	OAuthToken         port.OAuthTokenRepository
+	InvoiceV2  port.InvoiceV2Repository
+	Task       port.ApprovalTaskRepository
+	OAuthToken port.OAuthTokenRepository
 }
 
 // ServiceBundle groups all application services.

@@ -28,7 +28,7 @@ func TestVoucherRenderer_Render(t *testing.T) {
 			{ID: 10, ItemID: 1, FileType: entity.FileTypeInvoice},
 			{ID: 11, ItemID: 2, FileType: entity.FileTypeInvoice},
 		},
-		TotalAmountCents: 80000,
+		TotalAmount: 800.00,
 	}
 
 	tmpDir := t.TempDir()
@@ -155,7 +155,7 @@ func TestVoucherRenderer_RenderMaxItems(t *testing.T) {
 		ApprovalID:       "TEST-002",
 		Items:            items,
 		Attachments:      []*entity.Attachment{},
-		TotalAmountCents: 100000,
+		TotalAmount: 1000.00,
 	}
 
 	tmpDir := t.TempDir()
@@ -210,7 +210,7 @@ func TestVoucherRenderer_RenderInvalidTemplate(t *testing.T) {
 		ApprovalID:       "TEST-003",
 		Items:            []*entity.ReimbursementItem{},
 		Attachments:      []*entity.Attachment{},
-		TotalAmountCents: 0,
+		TotalAmount: 0,
 	}
 
 	tmpDir := t.TempDir()

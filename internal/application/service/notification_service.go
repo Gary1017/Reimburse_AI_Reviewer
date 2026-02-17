@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/garyjia/ai-reimbursement/internal/application/port"
 	"github.com/garyjia/ai-reimbursement/internal/domain/entity"
@@ -17,30 +16,24 @@ type NotificationService interface {
 }
 
 type notificationServiceImpl struct {
-	instanceRepo     port.InstanceRepository
-	notificationRepo port.NotificationRepository
-	larkClient       port.LarkClient
-	messageSender    port.LarkMessageSender
-	txManager        port.TransactionManager
-	logger           Logger
+	instanceRepo  port.InstanceRepository
+	larkClient    port.LarkClient
+	messageSender port.LarkMessageSender
+	logger        Logger
 }
 
 // NewNotificationService creates a new NotificationService
 func NewNotificationService(
 	instanceRepo port.InstanceRepository,
-	notificationRepo port.NotificationRepository,
 	larkClient port.LarkClient,
 	messageSender port.LarkMessageSender,
-	txManager port.TransactionManager,
 	logger Logger,
 ) NotificationService {
 	return &notificationServiceImpl{
-		instanceRepo:     instanceRepo,
-		notificationRepo: notificationRepo,
-		larkClient:       larkClient,
-		messageSender:    messageSender,
-		txManager:        txManager,
-		logger:           logger,
+		instanceRepo:  instanceRepo,
+		larkClient:    larkClient,
+		messageSender: messageSender,
+		logger:        logger,
 	}
 }
 
@@ -99,48 +92,14 @@ func (s *notificationServiceImpl) NotifyAuditResult(ctx context.Context, instanc
 	// Build message
 	message := s.buildAuditMessage(result)
 
-	// Create notification record
-	notification := &entity.AuditNotification{
-		InstanceID:     instanceID,
-		LarkInstanceID: instance.LarkInstanceID,
-		Status:         "PENDING",
-		AuditDecision:  determineDecision(result),
-		Confidence:     result.Confidence,
-		Violations:     buildViolationsString(result),
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
-	}
-
-	// Send message and save notification in transaction
-	err = s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
-		// Save notification record
-		if err := s.notificationRepo.Create(txCtx, notification); err != nil {
-			return fmt.Errorf("create notification: %w", err)
-		}
-
-		// Send message via Lark
-		if err := s.messageSender.SendMessage(txCtx, detail.OpenID, message); err != nil {
-			// Mark as failed
-			s.notificationRepo.UpdateStatus(txCtx, notification.ID, "FAILED", err.Error())
-			return fmt.Errorf("send message: %w", err)
-		}
-
-		// Mark as sent
-		if err := s.notificationRepo.MarkSent(txCtx, notification.ID); err != nil {
-			return fmt.Errorf("mark notification sent: %w", err)
-		}
-
-		return nil
-	})
-
-	if err != nil {
-		s.logger.Error("Failed to send audit result notification", "error", err, "instance_id", instanceID)
-		return err
+	// Send message via Lark
+	if err := s.messageSender.SendMessage(ctx, detail.OpenID, message); err != nil {
+		s.logger.Error("Failed to send audit result message", "error", err, "instance_id", instanceID, "open_id", detail.OpenID)
+		return fmt.Errorf("send message: %w", err)
 	}
 
 	s.logger.Info("Audit result notification sent successfully",
 		"instance_id", instanceID,
-		"notification_id", notification.ID,
 		"open_id", detail.OpenID,
 	)
 
@@ -172,46 +131,14 @@ func (s *notificationServiceImpl) NotifyVoucherReady(ctx context.Context, instan
 		voucherPath,
 	)
 
-	// Create notification record
-	notification := &entity.AuditNotification{
-		InstanceID:     instanceID,
-		LarkInstanceID: instance.LarkInstanceID,
-		Status:         "PENDING",
-		AuditDecision:  "VOUCHER_READY",
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
-	}
-
-	// Send message and save notification in transaction
-	err = s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
-		// Save notification record
-		if err := s.notificationRepo.Create(txCtx, notification); err != nil {
-			return fmt.Errorf("create notification: %w", err)
-		}
-
-		// Send message via Lark
-		if err := s.messageSender.SendMessage(txCtx, detail.OpenID, message); err != nil {
-			// Mark as failed
-			s.notificationRepo.UpdateStatus(txCtx, notification.ID, "FAILED", err.Error())
-			return fmt.Errorf("send message: %w", err)
-		}
-
-		// Mark as sent
-		if err := s.notificationRepo.MarkSent(txCtx, notification.ID); err != nil {
-			return fmt.Errorf("mark notification sent: %w", err)
-		}
-
-		return nil
-	})
-
-	if err != nil {
-		s.logger.Error("Failed to send voucher ready notification", "error", err, "instance_id", instanceID)
-		return err
+	// Send message via Lark
+	if err := s.messageSender.SendMessage(ctx, detail.OpenID, message); err != nil {
+		s.logger.Error("Failed to send voucher ready message", "error", err, "instance_id", instanceID, "open_id", detail.OpenID)
+		return fmt.Errorf("send message: %w", err)
 	}
 
 	s.logger.Info("Voucher ready notification sent successfully",
 		"instance_id", instanceID,
-		"notification_id", notification.ID,
 		"open_id", detail.OpenID,
 	)
 
@@ -291,15 +218,12 @@ type reviewNotificationServiceImpl struct {
 }
 
 // NewReviewNotificationService creates a new ReviewNotificationService
-// Deprecated: reviewNotificationRepo parameter is ignored. Notification status
-// is now tracked on ApprovalTask.notification_sent_at field.
+// Notification status is tracked on ApprovalTask.notification_sent_at field.
 func NewReviewNotificationService(
 	instanceRepo port.InstanceRepository,
 	taskRepo port.ApprovalTaskRepository,
-	reviewNotificationRepo port.ReviewNotificationRepository, // Deprecated: ignored
 	larkClient port.LarkClient,
 	messageSender port.LarkMessageSender,
-	txManager port.TransactionManager, // Deprecated: ignored
 	logger Logger,
 ) ReviewNotificationService {
 	return &reviewNotificationServiceImpl{

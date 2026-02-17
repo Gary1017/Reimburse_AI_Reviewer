@@ -48,26 +48,46 @@ func (fp *FormParser) Parse(jsonData string) ([]*entity.ReimbursementItem, error
 		return nil, fmt.Errorf("empty form data")
 	}
 
+	// Lark form data may be double-encoded: a JSON string containing a JSON array.
+	// e.g. DB stores: "[{\"id\":\"widget...\", ...}]" (outer quotes + escaped inner quotes)
+	// Step 1: If the data is a JSON string, unwrap it first.
+	unwrapped := jsonData
+	if len(jsonData) >= 2 && jsonData[0] == '"' {
+		var unquoted string
+		if err := json.Unmarshal([]byte(jsonData), &unquoted); err == nil {
+			unwrapped = unquoted
+		}
+	}
+
+	// Lark form data can be either:
+	// 1. A JSON object {"form": "[...]", ...}
+	// 2. A JSON array directly [{widget1}, {widget2}, ...]
 	var rawData map[string]interface{}
-	if err := json.Unmarshal([]byte(jsonData), &rawData); err != nil {
-		fp.logger.Error("Failed to unmarshal form data", zap.Error(err))
-		return nil, fmt.Errorf("failed to parse form JSON: %w", err)
+	var itemsData []map[string]interface{}
+
+	if err := json.Unmarshal([]byte(unwrapped), &rawData); err != nil {
+		// Try as JSON array (Lark widgets format directly)
+		var widgets []interface{}
+		if arrErr := json.Unmarshal([]byte(unwrapped), &widgets); arrErr != nil {
+			fp.logger.Error("Failed to unmarshal form data as object or array",
+				zap.Error(err), zap.NamedError("array_error", arrErr))
+			return nil, fmt.Errorf("failed to parse form JSON: %w", err)
+		}
+		// Successfully parsed as array - extract items from widgets directly
+		fp.logger.Debug("Form data is a JSON array, parsing as Lark widgets",
+			zap.Int("widget_count", len(widgets)))
+		itemsData = fp.extractItemsFromLarkWidgets(widgets)
+	} else {
+		// Parsed as object - use existing extraction logic
+		formFields := fp.extractFormFields(rawData)
+		if len(formFields) == 0 {
+			fp.logger.Warn("No form fields found in approval data")
+			return nil, fmt.Errorf("no form fields extracted from data")
+		}
+		itemsData = fp.extractItemsData(rawData, formFields)
 	}
 
 	var items []*entity.ReimbursementItem
-
-	// Try to extract items from common Lark form structures
-	// Lark forms typically have a "form" or "widgets" field containing form fields
-	formFields := fp.extractFormFields(rawData)
-
-	if len(formFields) == 0 {
-		fp.logger.Warn("No form fields found in approval data")
-		return nil, fmt.Errorf("no form fields extracted from data")
-	}
-
-	// Try to identify reimbursement items structure
-	// This could be in a table-like structure or repeated fields
-	itemsData := fp.extractItemsData(rawData, formFields)
 
 	if len(itemsData) == 0 {
 		fp.logger.Warn("No reimbursement items found in approval data")

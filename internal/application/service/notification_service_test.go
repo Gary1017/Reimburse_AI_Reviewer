@@ -84,13 +84,11 @@ func TestNotificationService_NotifyApplicant(t *testing.T) {
 			}, nil
 		},
 	}
-	notificationRepo := &mockNotificationRepo{}
 	larkClient := &mockLarkClient{}
 	messageSender := &mockMessageSender{}
-	txManager := &mockTxManager{}
 	logger := &mockLogger{}
 
-	service := NewNotificationService(instanceRepo, notificationRepo, larkClient, messageSender, txManager, logger)
+	service := NewNotificationService(instanceRepo, larkClient, messageSender, logger)
 
 	err := service.NotifyApplicant(context.Background(), 1, "Test message")
 
@@ -154,13 +152,11 @@ func TestNotificationService_NotifyAuditResult(t *testing.T) {
 					}, nil
 				},
 			}
-			notificationRepo := &mockNotificationRepo{}
 			larkClient := &mockLarkClient{}
 			messageSender := &mockMessageSender{}
-			txManager := &mockTxManager{}
 			logger := &mockLogger{}
 
-			service := NewNotificationService(instanceRepo, notificationRepo, larkClient, messageSender, txManager, logger)
+			service := NewNotificationService(instanceRepo, larkClient, messageSender, logger)
 
 			err := service.NotifyAuditResult(context.Background(), 1, tt.result)
 
@@ -181,13 +177,11 @@ func TestNotificationService_NotifyVoucherReady(t *testing.T) {
 			}, nil
 		},
 	}
-	notificationRepo := &mockNotificationRepo{}
 	larkClient := &mockLarkClient{}
 	messageSender := &mockMessageSender{}
-	txManager := &mockTxManager{}
 	logger := &mockLogger{}
 
-	service := NewNotificationService(instanceRepo, notificationRepo, larkClient, messageSender, txManager, logger)
+	service := NewNotificationService(instanceRepo, larkClient, messageSender, logger)
 
 	err := service.NotifyVoucherReady(context.Background(), 1, "/data/vouchers/instance_1/voucher.xlsx")
 

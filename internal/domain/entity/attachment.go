@@ -23,8 +23,6 @@ type Attachment struct {
 	DownloadStatus string     `json:"download_status"`
 	ErrorMessage   string     `json:"error_message,omitempty"`
 	DownloadedAt   *time.Time `json:"downloaded_at,omitempty"`
-	ProcessedAt    *time.Time `json:"processed_at,omitempty"`
-	AuditResult    string     `json:"audit_result,omitempty"`
 	CreatedAt      time.Time  `json:"created_at"`
 }
 

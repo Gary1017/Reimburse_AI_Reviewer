@@ -69,22 +69,26 @@ func (m *mockAttachmentRepo) CountByInstanceIDAndStatuses(ctx context.Context, i
 	return 0, nil
 }
 
-type mockInvoiceRepo struct{}
+type mockInvoiceV2Repo struct{}
 
-func (m *mockInvoiceRepo) Create(ctx context.Context, invoice *entity.Invoice) error {
+func (m *mockInvoiceV2Repo) Create(ctx context.Context, invoice *entity.InvoiceV2) error {
 	return nil
 }
 
-func (m *mockInvoiceRepo) GetByID(ctx context.Context, id int64) (*entity.Invoice, error) {
-	return &entity.Invoice{ID: id}, nil
+func (m *mockInvoiceV2Repo) GetByID(ctx context.Context, id int64) (*entity.InvoiceV2, error) {
+	return &entity.InvoiceV2{ID: id}, nil
 }
 
-func (m *mockInvoiceRepo) GetByAttachmentID(ctx context.Context, attachmentID int64) (*entity.Invoice, error) {
-	return &entity.Invoice{ID: 1}, nil
+func (m *mockInvoiceV2Repo) GetByAttachmentID(ctx context.Context, attachmentID int64) (*entity.InvoiceV2, error) {
+	return &entity.InvoiceV2{ID: 1}, nil
 }
 
-func (m *mockInvoiceRepo) GetByInstanceID(ctx context.Context, instanceID int64) ([]*entity.Invoice, error) {
-	return []*entity.Invoice{
+func (m *mockInvoiceV2Repo) GetByItemID(ctx context.Context, itemID int64) (*entity.InvoiceV2, error) {
+	return &entity.InvoiceV2{ID: 1}, nil
+}
+
+func (m *mockInvoiceV2Repo) GetByInstanceID(ctx context.Context, instanceID int64) ([]*entity.InvoiceV2, error) {
+	return []*entity.InvoiceV2{
 		{
 			ID:            1,
 			InvoiceCode:   "001",
@@ -94,12 +98,16 @@ func (m *mockInvoiceRepo) GetByInstanceID(ctx context.Context, instanceID int64)
 	}, nil
 }
 
-func (m *mockInvoiceRepo) Update(ctx context.Context, invoice *entity.Invoice) error {
-	return nil
+func (m *mockInvoiceV2Repo) GetByUniqueID(ctx context.Context, uniqueID string) (*entity.InvoiceV2, error) {
+	return nil, nil
 }
 
-func (m *mockInvoiceRepo) GetByUniqueID(ctx context.Context, uniqueID string) (*entity.Invoice, error) {
-	return nil, nil
+func (m *mockInvoiceV2Repo) GetTotalsByInstanceID(ctx context.Context, instanceID int64) (*port.InvoiceTotals, error) {
+	return &port.InvoiceTotals{Count: 1, TotalAmount: 1000.0}, nil
+}
+
+func (m *mockInvoiceV2Repo) Update(ctx context.Context, invoice *entity.InvoiceV2) error {
+	return nil
 }
 
 type mockAIAuditor struct{}
@@ -143,11 +151,11 @@ func TestAuditService_AuditInstance(t *testing.T) {
 	}
 	itemRepo := &mockItemRepo{}
 	attachmentRepo := &mockAttachmentRepo{}
-	invoiceRepo := &mockInvoiceRepo{}
+	invoiceV2Repo := &mockInvoiceV2Repo{}
 	aiAuditor := &mockAIAuditor{}
 	logger := &mockLogger{}
 
-	service := NewAuditService(instanceRepo, itemRepo, attachmentRepo, invoiceRepo, aiAuditor, logger)
+	service := NewAuditService(instanceRepo, itemRepo, attachmentRepo, invoiceV2Repo, aiAuditor, logger)
 
 	result, err := service.AuditInstance(context.Background(), 1)
 
@@ -174,11 +182,11 @@ func TestAuditService_AuditItem(t *testing.T) {
 	instanceRepo := &mockInstanceRepo{}
 	itemRepo := &mockItemRepo{}
 	attachmentRepo := &mockAttachmentRepo{}
-	invoiceRepo := &mockInvoiceRepo{}
+	invoiceV2Repo := &mockInvoiceV2Repo{}
 	aiAuditor := &mockAIAuditor{}
 	logger := &mockLogger{}
 
-	service := NewAuditService(instanceRepo, itemRepo, attachmentRepo, invoiceRepo, aiAuditor, logger)
+	service := NewAuditService(instanceRepo, itemRepo, attachmentRepo, invoiceV2Repo, aiAuditor, logger)
 
 	item := &entity.ReimbursementItem{
 		ID:         1,
@@ -216,11 +224,11 @@ func TestAuditService_ExtractInvoice(t *testing.T) {
 	instanceRepo := &mockInstanceRepo{}
 	itemRepo := &mockItemRepo{}
 	attachmentRepo := &mockAttachmentRepo{}
-	invoiceRepo := &mockInvoiceRepo{}
+	invoiceV2Repo := &mockInvoiceV2Repo{}
 	aiAuditor := &mockAIAuditor{}
 	logger := &mockLogger{}
 
-	service := NewAuditService(instanceRepo, itemRepo, attachmentRepo, invoiceRepo, aiAuditor, logger)
+	service := NewAuditService(instanceRepo, itemRepo, attachmentRepo, invoiceV2Repo, aiAuditor, logger)
 
 	result, err := service.ExtractInvoice(context.Background(), 1)
 
