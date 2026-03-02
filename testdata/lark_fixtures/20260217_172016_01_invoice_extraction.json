@@ -1,0 +1,42 @@
+{
+  "Success": true,
+  "InvoiceCode": "033002200311",
+  "InvoiceNumber": "45677890",
+  "TotalAmount": 50.00,
+  "TaxAmount": 2.36,
+  "InvoiceDate": "2026-01-18",
+  "SellerName": "浙江省交通投资集团有限公司",
+  "SellerTaxID": "91330000704009728X",
+  "BuyerName": "云翰虹章信息科技有限公司",
+  "BuyerTaxID": "91330200MA2EXAMPLE",
+  "Confidence": 0.95,
+  "Error": "",
+  "ExtractedData": {
+    "invoice_type": "电子普通发票",
+    "invoice_code": "033002200311",
+    "invoice_number": "45677890",
+    "invoice_date": "2026-01-18",
+    "total_amount": 50.00,
+    "tax_amount": 2.36,
+    "amount_without_tax": 47.64,
+    "seller_name": "浙江省交通投资集团有限公司",
+    "seller_tax_id": "91330000704009728X",
+    "seller_address": "杭州市西湖区文三路388号",
+    "buyer_name": "云翰虹章信息科技有限公司",
+    "buyer_tax_id": "91330200MA2EXAMPLE",
+    "items": [
+      {
+        "name": "*交通运输服务*高速公路通行费",
+        "specification": "",
+        "unit": "次",
+        "quantity": 1,
+        "unit_price": 47.64,
+        "amount": 47.64,
+        "tax_rate": 0.03,
+        "tax_amount": 2.36
+      }
+    ],
+    "check_code": "12345678901234567890",
+    "remarks": "浙A12345 2026年1月18日"
+  }
+}
